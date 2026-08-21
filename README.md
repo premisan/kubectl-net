@@ -19,6 +19,23 @@ Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Conta
 
 ## 🚀 빠른 시작 (Quick Start)
 
+### 0. 사전 설치 (macOS 기준)
+
+`kubectl-net` 빌드 및 실시간 Wireshark 패킷 캡처 연동을 위해 [Homebrew](https://brew.sh)를 통해 아래 도구들을 사전에 설치해 주세요:
+
+```bash
+# 1. Go 언어 (빌드용) & kubectl (Kubernetes CLI)
+brew install go kubectl
+
+# 2. Wireshark (패킷 캡처 실시간 GUI 분석용)
+brew install --cask wireshark
+
+# 3. (선택 사항) tshark (터미널 stdout 파이프라인 패킷 분석용)
+brew install tshark
+```
+
+---
+
 ### 1. 빌드 (Build)
 ```bash
 make build
