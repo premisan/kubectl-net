@@ -1,6 +1,6 @@
 # kcap (Kubernetes Packet Capture CLI)
 
-`kcap`은 Kubernetes 클러스터 내부의 Pod/컨테이너에서 발생하는 네트워크 패킷을 실시간으로 캡처하여 로컬 머신의 **Wireshark GUI**, **.pcap 파일**, 또는 **stdout (tshark 등 파이프라인)**으로 스트리밍하는 모던 CLI 도구입니다.
+`kcap`은 Kubernetes 클러스터 내부의 Pod/컨테이너에서 발생하는 네트워크 패킷을 실시간으로 캡처하여 로컬 머신의 **Wireshark GUI**, **.pcap 파일**, 또는 **stdout (tshark 등 파이프라인)** 으로 스트리밍하는 모던 CLI 도구입니다.
 
 ---
 
@@ -14,8 +14,8 @@
    - Pod 내부 `/tmp`에 static 바이너리를 업로드할 수 없어 실패합니다.
 
 ### kcap의 해결 방식: K8s 네이티브 Ephemeral Container
-- Kubernetes v1.23+ 표준 **Ephemeral Containers API (`pods/ephemeralcontainers`)**를 기반으로 동작합니다.
-- **노드 OS(GKE COS, Ubuntu, RHEL, Talos) 및 컨테이너 런타임(containerd, CRI-O, Docker 버전 무관)에 일체 영향을 받지 않습니다.**
+- Kubernetes v1.23+ 표준 **Ephemeral Containers API** (`pods/ephemeralcontainers`) 를 기반으로 동작합니다.
+- **노드 OS(GKE COS, Ubuntu, RHEL, Talos) 및 컨테이너 런타임(containerd, CRI-O, Docker 버전 무관)** 에 일체 영향을 받지 않습니다.
 - Distroless, Scratch, Non-root 컨테이너에서도 별도 파일 업로드 없이 즉시 패킷을 캡처할 수 있습니다.
 
 ---
