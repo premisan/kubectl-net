@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/premisan/kubectl-net/pkg/k8s"
 )
 
 var (
@@ -56,6 +58,10 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&globalContainer, "container", "c", "", "Target Container name (defaults to first container)")
 	RootCmd.PersistentFlags().StringVar(&globalDebugImage, "image", "nicolaka/netshoot:latest", "Image to use for Ephemeral debug container")
 	RootCmd.PersistentFlags().BoolVarP(&globalVerbose, "verbose", "v", false, "Enable verbose logging")
+
+	_ = RootCmd.RegisterFlagCompletionFunc("namespace", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return k8s.CompleteNamespaces(toComplete, globalKubeconfig, globalContext)
+	})
 
 	RootCmd.Version = version
 }

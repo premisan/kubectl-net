@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/premisan/kubectl-net/pkg/capture"
+	"github.com/premisan/kubectl-net/pkg/k8s"
 )
 
 var capOpts = capture.NewDefaultOptions()
@@ -29,6 +30,12 @@ or outputs to stdout for piping to tshark.`,
   # Stream to stdout for tshark:
   kubectl net cap my-pod -o - | tshark -r -`,
 	Args: cobra.MaximumNArgs(1),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
 			capOpts.PodName = args[0]
@@ -63,6 +70,17 @@ func init() {
 	capCmd.Flags().StringVarP(&capOpts.OutputFile, "output", "o", "", "Output destination: path to .pcap file, '-' for stdout, or omit to launch Wireshark")
 	capCmd.Flags().StringVarP((*string)(&capOpts.Mode), "mode", "m", string(capture.ModeAuto), "Capture mode: 'auto', 'ephemeral', or 'direct'")
 	capCmd.Flags().StringVar(&capOpts.WiresharkPath, "wireshark-path", "", "Custom path to Wireshark binary")
+
+	_ = capCmd.RegisterFlagCompletionFunc("pod", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
+	})
+	_ = capCmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		targetPod := capOpts.PodName
+		if len(args) > 0 {
+			targetPod = args[0]
+		}
+		return k8s.CompleteContainers(targetPod, globalNamespace, globalKubeconfig, globalContext)
+	})
 
 	RootCmd.AddCommand(capCmd)
 }

@@ -33,6 +33,12 @@ internal service discovery (.svc.cluster.local), or external DNS resolution.`,
   # Query a specific DNS server IP directly:
   kubectl net dig pod-a kubernetes.default.svc.cluster.local -s 10.96.0.10`,
 	Args: cobra.ExactArgs(2),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		podName := args[0]
 		domainName := args[1]

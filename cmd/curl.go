@@ -32,6 +32,12 @@ Supports all standard curl flags (-v, -k, -X POST, -H, -d, -I, -L, --connect-tim
   # Target a specific namespace and container:
   kubectl net curl my-pod -n production -c app-container -I https://google.com`,
 	DisableFlagParsing: true,
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, rawArgs []string) error {
 		// Handle help flags
 		for _, arg := range rawArgs {

@@ -26,11 +26,17 @@ gateways, or external hosts (e.g. 8.8.8.8).`,
   kubectl net ping pod-a 10.244.1.25
 
   # Ping external DNS with custom packet count:
-  kubectl net ping pod-a 8.8.8.8 -c 10
+  kubectl net ping pod-a 8.8.8.8 -C 10
 
   # Target pod in a specific namespace:
   kubectl net ping pod-a gateway.internal.net -n prod`,
 	Args: cobra.ExactArgs(2),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		podName := args[0]
 		targetHost := args[1]
