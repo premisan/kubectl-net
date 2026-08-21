@@ -48,46 +48,6 @@ make install
 # 이제 'kubectl net <명령어>' 또는 'knet <명령어>'로 어디서든 실행할 수 있습니다.
 ```
 
-### 3. 셸 자동완성 설정 (Shell Completion)
-
-`knet cap <TAB>`, `kubectl net cap <TAB>` 시 파드 이름이 자동완성되도록 설정합니다.
-
-#### zsh (macOS 기본 셸)
-
-아래 내용을 `~/.zshrc` 에 추가한 뒤 `source ~/.zshrc` 를 실행하세요:
-
-```zsh
-# knet 자동완성
-source <(knet completion zsh)
-
-# 'kubectl net <TAB>' 자동완성 브릿지
-# kubectl 플러그인은 별도 등록이 필요합니다.
-function __kubectl_net_completion() {
-  local -a completions
-  # kubectl-net의 __complete 메커니즘 호출 (subcommand + args 전달)
-  local args=("${words[@]:2}")   # 'kubectl', 'net' 이후 인자만 추출
-  completions=("${(@f)$(kubectl-net __complete -- ${args[@]} 2>/dev/null | grep -v '^:')}")
-  compadd -a completions
-}
-compdef __kubectl_net_completion 'kubectl net'
-```
-
-#### bash
-
-```bash
-# knet 자동완성
-source <(knet completion bash)
-
-# 'kubectl net <TAB>' 자동완성 브릿지
-function _kubectl_net_completion() {
-  local cur="${COMP_WORDS[COMP_CWORD]}"
-  local args=("${COMP_WORDS[@]:2}")
-  local IFS=$'\n'
-  COMPREPLY=($(kubectl-net __complete -- "${args[@]}" 2>/dev/null | grep -v '^:'))
-}
-complete -F _kubectl_net_completion 'kubectl net'
-```
-
 ---
 
 ## 📖 서브커맨드 및 사용 예시 (Usage)
