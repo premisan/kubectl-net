@@ -1,0 +1,26 @@
+# Binaries
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, pcap captures, logs
+*.test
+*.out
+*.pcap
+*.cap
+*.log
+
+# OS & IDE
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
