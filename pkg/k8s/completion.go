@@ -27,8 +27,7 @@ func CompletePods(toComplete string, namespaceOverride, kubeconfigPath, contextO
 	var results []string
 	for _, p := range pods.Items {
 		if strings.HasPrefix(p.Name, toComplete) {
-			// Format: "pod-name\tStatus: Running" (Zsh/Bash displays description)
-			results = append(results, p.Name+"\t"+string(p.Status.Phase))
+			results = append(results, p.Name)
 		}
 	}
 
