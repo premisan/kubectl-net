@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"syscall"
 )
 
 // FindWireshark searches for the Wireshark binary in standard OS paths or PATH
@@ -31,12 +32,14 @@ func FindWireshark(customPath string) (string, error) {
 	case "darwin": // macOS
 		candidates = []string{
 			"/Applications/Wireshark.app/Contents/MacOS/Wireshark",
+			"/Applications/Wireshark.app/Contents/MacOS/wireshark",
 			"/Applications/Wireshark.app/Contents/Resources/bin/wireshark",
 			"/opt/homebrew/bin/wireshark",
 			"/usr/local/bin/wireshark",
 		}
 		if u, err := user.Current(); err == nil && u.HomeDir != "" {
 			candidates = append(candidates, filepath.Join(u.HomeDir, "Applications/Wireshark.app/Contents/MacOS/Wireshark"))
+			candidates = append(candidates, filepath.Join(u.HomeDir, "Applications/Wireshark.app/Contents/MacOS/wireshark"))
 		}
 	case "linux":
 		candidates = []string{
@@ -74,7 +77,10 @@ func StartWireshark(wiresharkPath string) (*WiresharkProcess, error) {
 	// -k : start capturing immediately
 	// -i - : capture from standard input
 	cmd := exec.Command(wiresharkPath, "-k", "-i", "-")
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true, // Run Wireshark in its own process group
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -117,16 +123,13 @@ func (w *WiresharkProcess) Write(p []byte) (n int, err error) {
 	return w.stdin.Write(p)
 }
 
-// Close closes the stdin pipe and terminates Wireshark if still running
+// Close closes the stdin pipe
 func (w *WiresharkProcess) Close() error {
 	w.once.Do(func() {
 		close(w.exitChan)
 	})
 	if w.stdin != nil {
 		_ = w.stdin.Close()
-	}
-	if w.cmd != nil && w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
 	}
 	return nil
 }

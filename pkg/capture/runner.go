@@ -58,7 +58,34 @@ func (r *Runner) Run(parentCtx context.Context) error {
 	}
 	fmt.Fprintf(logWriter, "==> Target container: '%s'\n", targetContainer)
 
-	// 3. Setup Output Sink (Wireshark / File / Stdout)
+	// 3. Pre-check Wireshark path early if Wireshark GUI is requested
+	if opts.OutputFile == "" {
+		_, err := output.FindWireshark(opts.WiresharkPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 4. Ensure Ephemeral Debug Container is ready BEFORE launching Wireshark
+	var (
+		execContainer string = targetContainer
+		useEphemeral  bool   = (opts.Mode == ModeEphemeral || opts.Mode == ModeAuto)
+	)
+
+	if useEphemeral {
+		debugContainerName, err := clientCtx.EnsureEphemeralContainer(ctx, opts.PodName, targetContainer, opts.DebugImage, logWriter)
+		if err != nil {
+			if opts.Mode == ModeEphemeral {
+				return err
+			}
+			fmt.Fprintf(logWriter, "==> Ephemeral container mode failed (%v). Attempting direct exec fallback...\n", err)
+			useEphemeral = false
+		} else {
+			execContainer = debugContainerName
+		}
+	}
+
+	// 5. Setup Output Sink (Launch Wireshark or open file/stdout now that container is ready)
 	outHandler, err := output.SetupOutput(opts.OutputFile, opts.WiresharkPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize output: %w", err)
@@ -80,61 +107,22 @@ func (r *Runner) Run(parentCtx context.Context) error {
 		}()
 	}
 
-	// 4. Execute based on Mode
-	var captureErr error
-	switch opts.Mode {
-	case ModeEphemeral:
-		engine := k8s.NewEphemeralCaptureEngine(
-			clientCtx,
-			opts.PodName,
-			targetContainer,
-			opts.Interface,
-			opts.Filter,
-			opts.DebugImage,
-			opts.Verbose,
-		)
-		captureErr = engine.Start(ctx, outHandler.Writer, logWriter)
-
-	case ModeDirect:
-		engine := k8s.NewDirectCaptureEngine(
-			clientCtx,
-			opts.PodName,
-			targetContainer,
-			opts.Interface,
-			opts.Filter,
-			opts.Verbose,
-		)
-		captureErr = engine.Start(ctx, outHandler.Writer, logWriter)
-
-	case ModeAuto:
-		// Default: Use Ephemeral Container for robust containerd/GKE/Distroless support
-		engine := k8s.NewEphemeralCaptureEngine(
-			clientCtx,
-			opts.PodName,
-			targetContainer,
-			opts.Interface,
-			opts.Filter,
-			opts.DebugImage,
-			opts.Verbose,
-		)
-		captureErr = engine.Start(ctx, outHandler.Writer, logWriter)
-		if captureErr != nil && ctx.Err() == nil {
-			// If Ephemeral Containers are unsupported on an older cluster, fallback to direct mode
-			fmt.Fprintf(logWriter, "==> Ephemeral container mode failed (%v). Attempting direct exec fallback...\n", captureErr)
-			directEngine := k8s.NewDirectCaptureEngine(
-				clientCtx,
-				opts.PodName,
-				targetContainer,
-				opts.Interface,
-				opts.Filter,
-				opts.Verbose,
-			)
-			captureErr = directEngine.Start(ctx, outHandler.Writer, logWriter)
-		}
-
-	default:
-		return fmt.Errorf("unknown mode: %s", opts.Mode)
+	// 6. Build tcpdump command and execute
+	tcpdumpCmd := []string{"tcpdump", "-i", opts.Interface, "-U", "-w", "-"}
+	if opts.Filter != "" {
+		tcpdumpCmd = append(tcpdumpCmd, opts.Filter)
 	}
+
+	captureErr := clientCtx.ExecCommand(ctx, k8s.ExecOptions{
+		Namespace:     clientCtx.Namespace,
+		PodName:       opts.PodName,
+		ContainerName: execContainer,
+		Command:       tcpdumpCmd,
+		Stdin:         nil,
+		Stdout:        outHandler.Writer,
+		Stderr:        logWriter,
+		TTY:           false,
+	})
 
 	// Graceful shutdown
 	if ctx.Err() != nil {
