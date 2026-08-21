@@ -1,6 +1,6 @@
 package main
 
-import "kcap/cmd"
+import "github.com/premisan/kubectl-net/cmd"
 
 func main() {
 	cmd.Execute()

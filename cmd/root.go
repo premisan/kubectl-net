@@ -1,72 +1,61 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"kcap/pkg/capture"
 )
 
 var (
-	opts    = capture.NewDefaultOptions()
-	version = "0.1.0"
+	// Global flags
+	globalNamespace  string
+	globalContext    string
+	globalKubeconfig string
+	globalContainer  string
+	globalDebugImage string
+	globalVerbose    bool
+
+	version = "0.2.0"
 )
 
-// RootCmd represents the base command
+// RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use:   "kcap [POD_NAME]",
-	Short: "kcap - Modern Kubernetes packet capture tool for Wireshark (containerd & GKE ready)",
-	Long: `kcap is a lightweight CLI tool to capture network packets from Kubernetes Pod containers
-and stream them directly into Wireshark, a local pcap file, or stdout.
+	Use:   "kubectl-net [command]",
+	Short: "kubectl-net (knet) - Comprehensive Kubernetes network debugging CLI toolkit",
+	Long: `kubectl-net (knet) is a versatile Kubernetes network debugging toolkit.
+It uses Ephemeral Debug Containers to bypass container runtime limitations (containerd / GKE)
+and works seamlessly on distroless/scratch containers without modifying target workloads.
 
-Built with native Kubernetes Ephemeral Container support to work reliably across
-all containerd versions, GKE (Container-Optimized OS), and on-premise clusters
-without requiring docker/containerd runtime socket mounts.`,
-	Example: `  # Capture traffic on a pod and stream directly into Wireshark GUI:
-  kcap my-pod -n default
+Subcommands:
+  cap   - Live packet capture into Wireshark, .pcap file, or stdout
+  curl  - Execute curl HTTP/HTTPS requests from inside a target pod
+  ping  - Execute ICMP ping tests from inside a target pod
+  dig   - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
+  sh    - Attach an interactive debug shell (netshoot) to a pod's network namespace`,
+	Example: `  # Live packet capture to Wireshark:
+  kubectl net cap my-pod -n default -f "port 80"
 
-  # Target a specific container and apply a BPF packet filter:
-  kcap my-pod -c app-container -n prod -f "tcp port 80 or tcp port 443"
+  # Curl test from pod to internal service or external URL:
+  kubectl net curl my-pod -v http://backend-svc:8080/healthz
 
-  # Save capture stream to a local .pcap file (without opening Wireshark):
-  kcap my-pod -o ./capture.pcap -f "host 10.0.0.1"
+  # Ping test from pod to another pod IP or gateway:
+  kubectl net ping my-pod 10.244.1.25
 
-  # Stream raw pcap to stdout for piping to tshark:
-  kcap my-pod -o - | tshark -r -
+  # DNS diagnostic:
+  kubectl net dig my-pod backend-svc.default.svc.cluster.local
 
-  # Explicitly specify ephemeral debug container image:
-  kcap my-pod --mode ephemeral --image nicolaka/netshoot:latest`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			opts.PodName = args[0]
-		}
-
-		if err := opts.Validate(); err != nil {
-			return err
-		}
-
-		runner := capture.NewRunner(opts)
-		return runner.Run(context.Background())
-	},
+  # Interactive network troubleshooting shell:
+  kubectl net sh my-pod -n default`,
 }
 
 func init() {
-	RootCmd.Flags().StringVarP(&opts.PodName, "pod", "p", "", "Target Pod name")
-	RootCmd.Flags().StringVarP(&opts.ContainerName, "container", "c", "", "Target Container name (defaults to first container)")
-	RootCmd.Flags().StringVarP(&opts.Namespace, "namespace", "n", "", "Kubernetes namespace (defaults to current context namespace)")
-	RootCmd.Flags().StringVarP(&opts.Interface, "interface", "i", "any", "Network interface to capture (e.g. eth0, any)")
-	RootCmd.Flags().StringVarP(&opts.Filter, "filter", "f", "", "tcpdump BPF filter expression (e.g. 'tcp port 80')")
-	RootCmd.Flags().StringVarP(&opts.OutputFile, "output", "o", "", "Output destination: path to .pcap file, '-' for stdout, or omit to launch Wireshark")
-	RootCmd.Flags().StringVarP((*string)(&opts.Mode), "mode", "m", string(capture.ModeAuto), "Capture mode: 'auto', 'ephemeral', or 'direct'")
-	RootCmd.Flags().StringVar(&opts.DebugImage, "image", "nicolaka/netshoot:latest", "Image to use for Ephemeral debug container")
-	RootCmd.Flags().StringVar(&opts.WiresharkPath, "wireshark-path", "", "Custom path to Wireshark binary")
-	RootCmd.Flags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "Path to the kubeconfig file")
-	RootCmd.Flags().StringVar(&opts.KubeContext, "context", "", "The name of the kubeconfig context to use")
-	RootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "Enable verbose logging")
+	RootCmd.PersistentFlags().StringVarP(&globalNamespace, "namespace", "n", "", "Kubernetes namespace (defaults to current context namespace)")
+	RootCmd.PersistentFlags().StringVar(&globalContext, "context", "", "The name of the kubeconfig context to use")
+	RootCmd.PersistentFlags().StringVar(&globalKubeconfig, "kubeconfig", "", "Path to the kubeconfig file")
+	RootCmd.PersistentFlags().StringVarP(&globalContainer, "container", "c", "", "Target Container name (defaults to first container)")
+	RootCmd.PersistentFlags().StringVar(&globalDebugImage, "image", "nicolaka/netshoot:latest", "Image to use for Ephemeral debug container")
+	RootCmd.PersistentFlags().BoolVarP(&globalVerbose, "verbose", "v", false, "Enable verbose logging")
 
 	RootCmd.Version = version
 }

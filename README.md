@@ -1,22 +1,19 @@
-# kcap (Kubernetes Packet Capture CLI)
+# kubectl-net (knet)
 
-`kcap`은 Kubernetes 클러스터 내부의 Pod/컨테이너에서 발생하는 네트워크 패킷을 실시간으로 캡처하여 로컬 머신의 **Wireshark GUI**, **.pcap 파일**, 또는 **stdout (tshark 등 파이프라인)** 으로 스트리밍하는 모던 CLI 도구입니다.
+**`kubectl-net` (`knet`)** 은 Kubernetes 클러스터 내부의 네트워크 문제를 실시간으로 진단하고 분석할 수 있는 종합 CLI 툴킷(kubectl 플러그인)입니다.
+
+Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) 대화형 디버그 쉘(`sh`)** 을 지원합니다.
 
 ---
 
-## 💡 왜 ksniff 대신 kcap인가요?
+## 💡 주요 특징 (Key Features)
 
-기존 `ksniff`는 다음과 같은 환경에서 캡처가 실패하는 한계가 있었습니다:
-
-1. **containerd 런타임 종속성 문제 (`ksniff -p`)**:
-   - 노드의 `/var/run/docker.sock` 또는 특정 containerd 소켓 경로에 하드코딩 의존하여, GKE(Container-Optimized OS)나 최신 온프레미스 containerd 버전(1.6+, 2.0+)에서 컨테이너를 찾지 못하고 실패합니다.
-2. **보안 제약 (Distroless / ReadOnly Root Filesystem / Non-Root)**:
-   - Pod 내부 `/tmp`에 static 바이너리를 업로드할 수 없어 실패합니다.
-
-### kcap의 해결 방식: K8s 네이티브 Ephemeral Container
-- Kubernetes v1.23+ 표준 **Ephemeral Containers API** (`pods/ephemeralcontainers`) 를 기반으로 동작합니다.
-- **노드 OS(GKE COS, Ubuntu, RHEL, Talos) 및 컨테이너 런타임(containerd, CRI-O, Docker 버전 무관)** 에 일체 영향을 받지 않습니다.
-- Distroless, Scratch, Non-root 컨테이너에서도 별도 파일 업로드 없이 즉시 패킷을 캡처할 수 있습니다.
+* **GKE & 온프레미스 containerd 완벽 지원**:
+  * 기존 `ksniff`와 달리 노드의 docker/containerd 런타임 소켓을 마운트하지 않으므로, 런타임 버전(1.6+, 2.0+) 및 노드 OS에 종속되지 않습니다.
+* **보안 및 Distroless/Scratch 컨테이너 지원**:
+  * 원본 컨테이너에 파일 복사나 재시작 없이 파드의 네트워크 네임스페이스에 디버그 컨테이너(`netshoot`)를 부착합니다.
+* **기존 `curl` 플래그 전면 지원**:
+  * `-v`, `-k`, `-X POST`, `-H`, `-d`, `--connect-timeout` 등 기존 curl 커맨드의 모든 옵션을 그대로 사용할 수 있습니다.
 
 ---
 
@@ -25,84 +22,99 @@
 ### 1. 빌드 (Build)
 ```bash
 make build
-# 빌드된 바이너리: ./bin/kcap
+# 생성된 바이너리: ./bin/kubectl-net (및 alias ./bin/knet)
 ```
 
-### 2. kubectl 플러그인으로 설치 (선택)
+### 2. 설치 (Install as kubectl plugin)
 ```bash
 make install
-# 이제 'kcap' 또는 'kubectl cap' 명령어로 바로 실행할 수 있습니다.
+# 이제 'kubectl net <명령어>' 또는 'knet <명령어>'로 어디서든 실행할 수 있습니다.
 ```
 
 ---
 
-## 📖 사용 예시 (Usage Examples)
+## 📖 서브커맨드 및 사용 예시 (Usage)
 
-### 1. 실시간 Wireshark GUI 캡처 (기본)
-Pod 이름을 지정하면 백그라운드에서 패킷 스트림을 수신하고 로컬 Wireshark GUI가 자동으로 실행됩니다.
+### 1. `kubectl net curl` (파드 네트워크 Curl 테스트)
+특정 Pod의 네트워크 환경에서 다른 Pod, 내부 서비스 또는 외부 엔드포인트로 HTTP/HTTPS 요청을 보냅니다. **기존 curl의 모든 플래그를 그대로 사용**할 수 있습니다.
+
 ```bash
-# 기본 네임스페이스의 my-pod 캡처
-kcap my-pod
+# 기본 GET 요청 (타겟 Pod -> 내부 서비스)
+kubectl net curl my-pod http://backend-service.default.svc:8080/healthz
 
-# 특정 네임스페이스 및 컨테이너 지정
-kcap my-pod -n production -c my-app
+# 상세 출력(-v), SSL 인증서 무시(-k), 커스텀 헤더 및 POST 데이터 전송
+kubectl net curl my-pod -v -k -X POST -H "Content-Type: application/json" \
+  -d '{"name":"test"}' https://api.external.com/v1/data
+
+# 연결 타임아웃 지정 및 네임스페이스/컨테이너 타겟팅
+kubectl net curl my-pod -n production -c app-container --connect-timeout 3 -I https://google.com
 ```
 
-### 2. BPF 패킷 필터 적용
-HTTP/HTTPS 트래픽 또는 특정 IP만 필터링하여 캡처합니다.
-```bash
-# HTTP(80) 및 HTTPS(443) 포트 트래픽만 캡처
-kcap my-pod -n default -f "tcp port 80 or tcp port 443"
+### 2. `kubectl net ping` (ICMP 핑 테스트)
+특정 Pod에서 다른 Pod IP, 노드 IP, 게이트웨이 또는 외부 IP로 ICMP Ping을 보내 네트워크 도달성과 지연시간(RTT)을 측정합니다.
 
-# 특정 호스트와의 통신만 캡처
-kcap my-pod -f "host 10.0.0.15"
+```bash
+# 다른 파드 IP로 핑 테스트 (기본 4회)
+kubectl net ping my-pod 10.244.1.25
+
+# 핑 횟수(-C) 및 응답 대기시간(-t) 지정
+kubectl net ping my-pod 8.8.8.8 -C 10 -t 3 -n default
 ```
 
-### 3. 로컬 .pcap 파일로 저장 (Wireshark GUI 없이 백그라운드 덤프)
+### 3. `kubectl net cap` (패킷 캡처 - 기존 kcap/ksniff 기능)
+파드에서 발생하는 네트워크 패킷을 실시간으로 캡처하여 로컬 **Wireshark GUI**, **.pcap 파일**, 또는 **stdout (tshark 연동)** 으로 스트리밍합니다.
+
 ```bash
-kcap my-pod -n default -o ./traffic_dump.pcap -f "port 8080"
+# Pod 트래픽 실시간 Wireshark GUI 실행 (기본)
+kubectl net cap my-pod -n default
+
+# HTTP(80) 및 HTTPS(443) 트래픽만 필터링 (BPF 필터)
+kubectl net cap my-pod -f "tcp port 80 or tcp port 443"
+
+# 로컬 pcap 파일로 덤프 저장 (Wireshark GUI 없이 파일 저장)
+kubectl net cap my-pod -o ./capture.pcap
+
+# stdout으로 raw pcap 출력 후 tshark 연동
+kubectl net cap my-pod -o - | tshark -r -
 ```
 
-### 4. stdout 스트림 파이프라인 연동 (`tshark`, `tcpdump`)
-```bash
-# 터미널에서 즉시 패킷 헤더 확인
-kcap my-pod -o - | tshark -r -
+### 4. `kubectl net dig` (DNS 질의 진단)
+파드 내부의 DNS 설정(CoreDNS)을 통해 내부 서비스 도메인 또는 외부 도메인에 대한 해석(Resolution) 상태를 확인합니다.
 
-# 특정 프로토콜 분석
-kcap my-pod -o - | tshark -r - -Y "http"
+```bash
+# 내부 서비스 도메인 질의
+kubectl net dig my-pod backend-service.default.svc.cluster.local
+
+# 외부 도메인 및 특정 레코드 타입 (SRV, TXT, AAAA 등) 질의
+kubectl net dig my-pod google.com -t AAAA
+
+# 특정 DNS 서버 IP를 직접 지정하여 질의
+kubectl net dig my-pod kubernetes.default.svc.cluster.local -s 10.96.0.10
 ```
 
-### 5. 명시적 모드 및 디버그 이미지 선택
-```bash
-# Ephemeral Container 모드 명시 (기본값 auto에서도 자동 적용됨)
-kcap my-pod --mode ephemeral --image nicolaka/netshoot:latest
+### 5. `kubectl net sh` (대화형 디버그 쉘)
+파드의 네트워크 네임스페이스를 공유하는 대화형 `netshoot` 쉘을 즉시 실행하여 터미널에서 자유롭게 네트워크 도구(`nmap`, `iperf3`, `netstat`, `traceroute` 등)를 실행합니다.
 
-# Pod 내부에 이미 tcpdump가 설치되어 있는 경우 초고속 직접 실행
-kcap my-pod --mode direct
+```bash
+kubectl net sh my-pod -n default
 ```
 
 ---
 
-## ⚙️ 전체 CLI 플래그 (Flags)
+## ⚙️ 공통 플래그 (Global Flags)
 
 | 플래그 | 단축키 | 기본값 | 설명 |
 | :--- | :--- | :--- | :--- |
-| `--pod` | `-p` | (인자 전달) | 타겟 Pod 이름 |
-| `--container` | `-c` | 첫 번째 컨테이너 | 타겟 컨테이너 이름 |
 | `--namespace` | `-n` | 현재 context 네임스페이스 | Kubernetes 네임스페이스 |
-| `--interface` | `-i` | `any` | 캡처할 네트워크 인터페이스 (`eth0`, `any` 등) |
-| `--filter` | `-f` | `""` | tcpdump BPF 필터 식 (예: `'tcp port 80'`) |
-| `--output` | `-o` | Wireshark 실행 | 출력 대상: `.pcap` 파일 경로, `-` (stdout), 미지정 시 Wireshark 실행 |
-| `--mode` | `-m` | `auto` | 캡처 모드: `auto`, `ephemeral`, `direct` |
+| `--container` | `-c` | 첫 번째 컨테이너 | 타겟 컨테이너 이름 |
 | `--image` | | `nicolaka/netshoot:latest` | Ephemeral 디버그 컨테이너 이미지 |
-| `--wireshark-path`| | 자동 탐색 | 로컬 Wireshark 바이너리 경로 수동 지정 |
-| `--kubeconfig` | | `~/.kube/config` | 사용할 kubeconfig 파일 경로 |
-| `--context` | | 현재 context | 사용할 kubeconfig context 이름 |
-| `--verbose` | `-v` | `false` | 상세 디버그 로그 출력 |
+| `--kubeconfig` | | `~/.kube/config` | Kubeconfig 파일 경로 |
+| `--context` | | 현재 context | Kubeconfig Context 이름 |
+| `--verbose` | `-v` | `false` | 상세 디버그 로그 활성화 |
 
 ---
 
-## 🛠️ 지원 환경 및 요구사항
-- **Kubernetes 클러스터**: GKE, EKS, AKS, 온프레미스 (k3s, kubeadm, RKE2, Talos 등) K8s v1.23+
+## 🛠️ 지원 환경
+- **Kubernetes**: GKE, EKS, AKS, 온프레미스 (k3s, kubeadm, RKE2, Talos 등) v1.23+
 - **컨테이너 런타임**: containerd (모든 버전), CRI-O, Docker
-- **로컬 머신**: macOS, Linux, Windows (Wireshark 설치 권장)
+- **운영체제**: macOS, Linux, Windows

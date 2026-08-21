@@ -8,10 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"kcap/pkg/k8s"
-	"kcap/pkg/output"
+	"github.com/premisan/kubectl-net/pkg/k8s"
+	"github.com/premisan/kubectl-net/pkg/output"
 )
 
 // Runner coordinates the entire capture session
@@ -49,9 +47,9 @@ func (r *Runner) Run(parentCtx context.Context) error {
 	fmt.Fprintf(logWriter, "==> Target: Pod '%s' in namespace '%s'\n", opts.PodName, ns)
 
 	// 2. Fetch Pod to verify and determine container
-	pod, err := clientCtx.Clientset.CoreV1().Pods(ns).Get(ctx, opts.PodName, metav1.GetOptions{})
+	pod, err := clientCtx.GetPod(ctx, opts.PodName)
 	if err != nil {
-		return fmt.Errorf("failed to fetch pod '%s/%s': %w", ns, opts.PodName, err)
+		return err
 	}
 
 	targetContainer, err := k8s.FindTargetContainer(pod, opts.ContainerName)

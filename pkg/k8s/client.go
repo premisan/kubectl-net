@@ -1,10 +1,12 @@
 package k8s
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -65,6 +67,18 @@ func NewClientContext(kubeconfigPath, contextOverride, namespaceOverride string)
 		Config:    restConfig,
 		Namespace: namespace,
 	}, nil
+}
+
+// GetPod retrieves a Pod and verifies it is in Running state
+func (c *ClientContext) GetPod(ctx context.Context, podName string) (*corev1.Pod, error) {
+	pod, err := c.Clientset.CoreV1().Pods(c.Namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod '%s' in namespace '%s': %w", podName, c.Namespace, err)
+	}
+	if pod.Status.Phase != corev1.PodRunning {
+		return nil, fmt.Errorf("pod '%s' is not running (current phase: %s)", podName, pod.Status.Phase)
+	}
+	return pod, nil
 }
 
 // FindTargetContainer returns the verified target container name or defaults to the first container

@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // DirectCaptureEngine handles packet capture directly on the existing container via exec
@@ -43,17 +40,10 @@ func NewDirectCaptureEngine(
 
 // Start executes tcpdump directly inside the target container and streams output
 func (d *DirectCaptureEngine) Start(ctx context.Context, pcapWriter io.Writer, logWriter io.Writer) error {
-	clientset := d.clientCtx.Clientset
-	ns := d.clientCtx.Namespace
-
 	// 1. Verify Pod is running
-	pod, err := clientset.CoreV1().Pods(ns).Get(ctx, d.PodName, metav1.GetOptions{})
+	_, err := d.clientCtx.GetPod(ctx, d.PodName)
 	if err != nil {
-		return fmt.Errorf("failed to get pod '%s/%s': %w", ns, d.PodName, err)
-	}
-
-	if pod.Status.Phase != corev1.PodRunning {
-		return fmt.Errorf("target pod '%s' is not in Running state (current phase: %s)", d.PodName, pod.Status.Phase)
+		return err
 	}
 
 	if logWriter != nil {
@@ -72,16 +62,14 @@ func (d *DirectCaptureEngine) Start(ctx context.Context, pcapWriter io.Writer, l
 	}
 
 	// 3. Execute and stream
-	return StreamExec(
-		ctx,
-		clientset,
-		d.clientCtx.Config,
-		ns,
-		d.PodName,
-		d.TargetContainer,
-		tcpdumpCmd,
-		nil,
-		pcapWriter,
-		logWriter,
-	)
+	return d.clientCtx.ExecCommand(ctx, ExecOptions{
+		Namespace:     d.clientCtx.Namespace,
+		PodName:       d.PodName,
+		ContainerName: d.TargetContainer,
+		Command:       tcpdumpCmd,
+		Stdin:         nil,
+		Stdout:        pcapWriter,
+		Stderr:        logWriter,
+		TTY:           false,
+	})
 }
