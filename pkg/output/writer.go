@@ -8,21 +8,23 @@ import (
 
 // OutputHandler manages the destination of the pcap data stream
 type OutputHandler struct {
-	Writer  io.Writer
-	Closer  io.Closer
-	IsPipe  bool
-	Summary string
+	Writer   io.Writer
+	Closer   io.Closer
+	ExitChan <-chan struct{}
+	IsPipe   bool
+	Summary  string
 }
 
 // SetupOutput initializes the appropriate output sink based on user options
 func SetupOutput(outputFile string, customWiresharkPath string) (*OutputHandler, error) {
-	// Case 1: Stream to stdout (for piping e.g. kcap ... -o - | tshark -r -)
+	// Case 1: Stream to stdout (for piping e.g. kubectl net cap ... -o - | tshark -r -)
 	if outputFile == "-" {
 		return &OutputHandler{
-			Writer:  os.Stdout,
-			Closer:  nil,
-			IsPipe:  true,
-			Summary: "Streaming pcap directly to stdout",
+			Writer:   os.Stdout,
+			Closer:   nil,
+			ExitChan: nil,
+			IsPipe:   true,
+			Summary:  "Streaming pcap directly to stdout",
 		}, nil
 	}
 
@@ -33,10 +35,11 @@ func SetupOutput(outputFile string, customWiresharkPath string) (*OutputHandler,
 			return nil, fmt.Errorf("failed to create output file '%s': %w", outputFile, err)
 		}
 		return &OutputHandler{
-			Writer:  file,
-			Closer:  file,
-			IsPipe:  false,
-			Summary: fmt.Sprintf("Writing packets to file: %s", outputFile),
+			Writer:   file,
+			Closer:   file,
+			ExitChan: nil,
+			IsPipe:   false,
+			Summary:  fmt.Sprintf("Writing packets to file: %s", outputFile),
 		}, nil
 	}
 
@@ -52,10 +55,11 @@ func SetupOutput(outputFile string, customWiresharkPath string) (*OutputHandler,
 	}
 
 	return &OutputHandler{
-		Writer:  wsProcess,
-		Closer:  wsProcess,
-		IsPipe:  false,
-		Summary: fmt.Sprintf("Piping packets to Wireshark: %s", wsPath),
+		Writer:   wsProcess,
+		Closer:   wsProcess,
+		ExitChan: wsProcess.ExitChan(),
+		IsPipe:   false,
+		Summary:  fmt.Sprintf("Piping packets to Wireshark: %s", wsPath),
 	}, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 	corev1 "k8s.io/api/core/v1"
@@ -66,7 +67,12 @@ func (c *ClientContext) ExecCommand(ctx context.Context, opts ExecOptions) error
 
 	err = executor.StreamWithContext(ctx, streamOpts)
 	if err != nil {
+		// Graceful exit on context cancellation or when output pipe is closed by reader
 		if ctx.Err() != nil {
+			return nil
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "broken pipe") || strings.Contains(errMsg, "closed pipe") || strings.Contains(errMsg, "EOF") {
 			return nil
 		}
 		return err

@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"sync"
 )
 
 // FindWireshark searches for the Wireshark binary in standard OS paths or PATH
@@ -60,10 +61,12 @@ func FindWireshark(customPath string) (string, error) {
 	return "", fmt.Errorf("wireshark binary not found. Please install Wireshark or specify path with --wireshark-path (or use -o to save to file)")
 }
 
-// WiresharkProcess encapsulates the running Wireshark instance and its stdin pipe
+// WiresharkProcess encapsulates the running Wireshark instance, its stdin pipe, and exit notification
 type WiresharkProcess struct {
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	exitChan chan struct{}
+	once     sync.Once
 }
 
 // StartWireshark spawns Wireshark in live capture mode reading from stdin
@@ -82,24 +85,48 @@ func StartWireshark(wiresharkPath string) (*WiresharkProcess, error) {
 		return nil, fmt.Errorf("failed to start Wireshark: %w", err)
 	}
 
-	return &WiresharkProcess{
-		cmd:   cmd,
-		stdin: stdin,
-	}, nil
+	wp := &WiresharkProcess{
+		cmd:      cmd,
+		stdin:    stdin,
+		exitChan: make(chan struct{}),
+	}
+
+	// Monitor Wireshark process termination in background
+	go func() {
+		_ = cmd.Wait()
+		wp.once.Do(func() {
+			close(wp.exitChan)
+		})
+	}()
+
+	return wp, nil
+}
+
+// ExitChan returns a channel that is closed when the Wireshark GUI process terminates
+func (w *WiresharkProcess) ExitChan() <-chan struct{} {
+	return w.exitChan
 }
 
 // Write writes bytes into Wireshark's stdin
 func (w *WiresharkProcess) Write(p []byte) (n int, err error) {
+	select {
+	case <-w.exitChan:
+		return 0, io.EOF
+	default:
+	}
 	return w.stdin.Write(p)
 }
 
-// Close closes the stdin pipe and waits for Wireshark to exit or terminates it
+// Close closes the stdin pipe and terminates Wireshark if still running
 func (w *WiresharkProcess) Close() error {
+	w.once.Do(func() {
+		close(w.exitChan)
+	})
 	if w.stdin != nil {
 		_ = w.stdin.Close()
 	}
 	if w.cmd != nil && w.cmd.Process != nil {
-		_ = w.cmd.Wait()
+		_ = w.cmd.Process.Kill()
 	}
 	return nil
 }

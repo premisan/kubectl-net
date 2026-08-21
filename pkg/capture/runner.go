@@ -66,9 +66,22 @@ func (r *Runner) Run(parentCtx context.Context) error {
 	defer outHandler.Close()
 
 	fmt.Fprintf(logWriter, "==> %s\n", outHandler.Summary)
-	fmt.Fprintf(logWriter, "==> Press Ctrl+C to stop capture\n")
+	fmt.Fprintf(logWriter, "==> Press Ctrl+C or close Wireshark to stop capture\n")
+
+	// Automatically stop capture and exit when Wireshark GUI is closed
+	if outHandler.ExitChan != nil {
+		go func() {
+			select {
+			case <-outHandler.ExitChan:
+				fmt.Fprintf(logWriter, "\n==> Wireshark was closed. Stopping packet capture...\n")
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
 
 	// 4. Execute based on Mode
+	var captureErr error
 	switch opts.Mode {
 	case ModeEphemeral:
 		engine := k8s.NewEphemeralCaptureEngine(
@@ -80,7 +93,7 @@ func (r *Runner) Run(parentCtx context.Context) error {
 			opts.DebugImage,
 			opts.Verbose,
 		)
-		return engine.Start(ctx, outHandler.Writer, logWriter)
+		captureErr = engine.Start(ctx, outHandler.Writer, logWriter)
 
 	case ModeDirect:
 		engine := k8s.NewDirectCaptureEngine(
@@ -91,7 +104,7 @@ func (r *Runner) Run(parentCtx context.Context) error {
 			opts.Filter,
 			opts.Verbose,
 		)
-		return engine.Start(ctx, outHandler.Writer, logWriter)
+		captureErr = engine.Start(ctx, outHandler.Writer, logWriter)
 
 	case ModeAuto:
 		// Default: Use Ephemeral Container for robust containerd/GKE/Distroless support
@@ -104,10 +117,10 @@ func (r *Runner) Run(parentCtx context.Context) error {
 			opts.DebugImage,
 			opts.Verbose,
 		)
-		err := engine.Start(ctx, outHandler.Writer, logWriter)
-		if err != nil && ctx.Err() == nil {
+		captureErr = engine.Start(ctx, outHandler.Writer, logWriter)
+		if captureErr != nil && ctx.Err() == nil {
 			// If Ephemeral Containers are unsupported on an older cluster, fallback to direct mode
-			fmt.Fprintf(logWriter, "==> Ephemeral container mode failed (%v). Attempting direct exec fallback...\n", err)
+			fmt.Fprintf(logWriter, "==> Ephemeral container mode failed (%v). Attempting direct exec fallback...\n", captureErr)
 			directEngine := k8s.NewDirectCaptureEngine(
 				clientCtx,
 				opts.PodName,
@@ -116,11 +129,18 @@ func (r *Runner) Run(parentCtx context.Context) error {
 				opts.Filter,
 				opts.Verbose,
 			)
-			return directEngine.Start(ctx, outHandler.Writer, logWriter)
+			captureErr = directEngine.Start(ctx, outHandler.Writer, logWriter)
 		}
-		return err
 
 	default:
 		return fmt.Errorf("unknown mode: %s", opts.Mode)
 	}
+
+	// Graceful shutdown
+	if ctx.Err() != nil {
+		fmt.Fprintf(logWriter, "==> Capture stopped.\n")
+		return nil
+	}
+
+	return captureErr
 }
