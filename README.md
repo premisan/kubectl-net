@@ -48,6 +48,28 @@ make install
 # 이제 'kubectl net <명령어>' 또는 'knet <명령어>'로 어디서든 실행할 수 있습니다.
 ```
 
+### 3. 셸 자동완성 설정 (Shell Completion)
+
+`knet cap <TAB>` 시 파드 이름이 자동완성되도록 설정합니다.
+
+#### zsh (macOS 기본 셸)
+
+아래 내용을 `~/.zshrc` 에 추가한 뒤 `source ~/.zshrc` 를 실행하세요:
+
+```zsh
+# knet 자동완성
+source <(knet completion zsh)
+compdef _kubectl-net knet
+```
+
+#### bash
+
+```bash
+# knet 자동완성
+source <(knet completion bash)
+compdef _kubectl-net knet
+```
+
 ---
 
 ## 📖 서브커맨드 및 사용 예시 (Usage)
