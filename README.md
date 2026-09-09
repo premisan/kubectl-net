@@ -2,7 +2,7 @@
 
 **`kubectl-net` (`knet`)** 은 Kubernetes 클러스터 내부의 네트워크 문제를 실시간으로 진단하고 분석할 수 있는 종합 CLI 툴킷(kubectl 플러그인)입니다.
 
-Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) 대화형 디버그 쉘(`sh`)** 을 지원합니다.
+Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) Netcat 포트 접속/수신 테스트(`nc`)**, **6) 대화형 디버그 쉘(`sh`)** 을 지원합니다.
 
 ---
 
@@ -131,7 +131,33 @@ kubectl net dig my-pod google.com -t AAAA
 kubectl net dig my-pod kubernetes.default.svc.cluster.local -s 10.96.0.10
 ```
 
-### 5. `kubectl net sh` (대화형 디버그 쉘)
+### 5. `kubectl net nc` (Netcat 포트 접속 및 수신 테스트)
+특정 Pod에서 대상 호스트/IP의 포트로 TCP/UDP 연결 및 포트 오픈 상태를 점검하거나, 반대로 Pod 내에서 포트를 Listen(수신 대기)하여 다른 Pod로부터의 인바운드 연결 테스트를 수행합니다.
+
+```bash
+# 대상 서비스 포트 오픈 여부 빠른 점검 (Zero-I/O 포트 스캔)
+kubectl net nc my-pod backend-service 8080 -z
+
+# IP 주소로 포트 접속 테스트 (연결 타임아웃 3초 지정)
+kubectl net nc my-pod 10.244.1.25 3306 -z -w 3
+
+# DNS UDP 포트(53) 연결 테스트
+kubectl net nc my-pod 10.96.0.10 53 -u -z
+
+# 양방향 데이터 송수신 대화형 TCP 연결
+kubectl net nc my-pod backend-service 8080
+
+# 특정 포트로 수신 대기 (다른 Pod에서 이 Pod로 접속 테스트 가능)
+kubectl net nc my-pod -l 8080
+
+# 연결이 끊겨도 계속 수신 대기 유지 (-k)
+kubectl net nc my-pod -l 8080 -k
+
+# UDP 5353 포트 수신 대기
+kubectl net nc my-pod -l 5353 -u
+```
+
+### 6. `kubectl net sh` (대화형 디버그 쉘)
 파드의 네트워크 네임스페이스를 공유하는 대화형 `netshoot` 쉘을 즉시 실행하여 터미널에서 자유롭게 네트워크 도구(`nmap`, `iperf3`, `netstat`, `traceroute` 등)를 실행합니다.
 
 ```bash
