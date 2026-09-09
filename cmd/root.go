@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	utilexec "k8s.io/client-go/util/exec"
 
 	"github.com/premisan/kubectl-net/pkg/k8s"
 )
@@ -34,6 +35,7 @@ Subcommands:
   curl  - Execute curl HTTP/HTTPS requests from inside a target pod
   ping  - Execute ICMP ping tests from inside a target pod
   dig   - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
+  nc    - Execute netcat (nc) port connectivity tests or listen on a port
   sh    - Attach an interactive debug shell (netshoot) to a pod's network namespace`,
 	Example: `  # Live packet capture to Wireshark:
   kubectl net cap my-pod -n default -f "port 80"
@@ -47,8 +49,15 @@ Subcommands:
   # DNS diagnostic:
   kubectl net dig my-pod backend-svc.default.svc.cluster.local
 
+  # Port connectivity check (zero-I/O scan):
+  kubectl net nc my-pod backend-svc 8080 -z
+
+  # Listen on port inside pod to accept incoming test connections:
+  kubectl net nc my-pod -l 8080
+
   # Interactive network troubleshooting shell:
   kubectl net sh my-pod -n default`,
+	SilenceUsage: true,
 }
 
 func init() {
@@ -68,7 +77,14 @@ func init() {
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() {
+	RootCmd.SilenceErrors = true
 	if err := RootCmd.Execute(); err != nil {
+		if exitErr, ok := err.(utilexec.CodeExitError); ok {
+			os.Exit(exitErr.Code)
+		}
+		if exitErr, ok := err.(utilexec.ExitError); ok && exitErr.Exited() {
+			os.Exit(exitErr.ExitStatus())
+		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
