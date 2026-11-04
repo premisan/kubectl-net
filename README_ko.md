@@ -185,3 +185,17 @@ kubectl net sh my-pod -n default
 - **Kubernetes**: GKE, EKS, AKS, 온프레미스 (k3s, kubeadm, RKE2, Talos 등) v1.23+
 - **컨테이너 런타임**: containerd (모든 버전), CRI-O, Docker
 - **운영체제**: macOS, Linux, Windows
+
+---
+
+## 🗑️ 플러그인 삭제 (Uninstallation)
+
+시스템에 설치된 `kubectl-net` 플러그인 및 별칭(alias)을 삭제하려면 아래 명령어를 실행하세요:
+
+```bash
+# 1. 설치된 바이너리 및 심볼릭 링크 삭제
+sudo rm -f /usr/local/bin/kubectl-net /usr/local/bin/knet
+
+# 2. (선택 사항) 셸 자동완성을 등록한 경우 ~/.zshrc 또는 ~/.bashrc에서 관련 설정 삭제
+#    'knet completion' 및 'compdef _kubectl-net knet' 관련 라인을 제거합니다.
+```

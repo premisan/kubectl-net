@@ -194,3 +194,17 @@ kubectl net sh my-pod -n default
 - **Kubernetes**: GKE, EKS, AKS, On-premise (k3s, kubeadm, RKE2, Talos, etc.) v1.23+
 - **Container Runtimes**: containerd (all versions), CRI-O, Docker
 - **Operating Systems**: macOS, Linux, Windows
+
+---
+
+## 🗑️ Uninstallation
+
+To remove the `kubectl-net` plugin and its alias from your system:
+
+```bash
+# 1. Remove installed binaries and symlink
+sudo rm -f /usr/local/bin/kubectl-net /usr/local/bin/knet
+
+# 2. (Optional) Remove shell completion settings from ~/.zshrc or ~/.bashrc if configured:
+#    Delete the lines containing 'knet completion' and 'compdef _kubectl-net knet'
+```
