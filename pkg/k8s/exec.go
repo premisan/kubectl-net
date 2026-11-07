@@ -46,6 +46,7 @@ func (c *ClientContext) ExecCommand(ctx context.Context, opts ExecOptions) error
 		return fmt.Errorf("failed to create SPDY executor: %w", err)
 	}
 
+	var sizeQueue *terminalSizeQueue
 	if opts.TTY {
 		// Set terminal to raw mode if stdin is a terminal
 		if file, ok := opts.Stdin.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
@@ -55,6 +56,8 @@ func (c *ClientContext) ExecCommand(ctx context.Context, opts ExecOptions) error
 					_ = term.Restore(int(file.Fd()), oldState)
 				}()
 			}
+			sizeQueue = newTerminalSizeQueue(int(file.Fd()))
+			defer sizeQueue.Stop()
 		}
 	}
 
@@ -63,6 +66,9 @@ func (c *ClientContext) ExecCommand(ctx context.Context, opts ExecOptions) error
 		Stdout: opts.Stdout,
 		Stderr: opts.Stderr,
 		Tty:    opts.TTY,
+	}
+	if sizeQueue != nil {
+		streamOpts.TerminalSizeQueue = sizeQueue
 	}
 
 	err = executor.StreamWithContext(ctx, streamOpts)
