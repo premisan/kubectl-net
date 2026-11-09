@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,9 +31,9 @@ func (c *ClientContext) EnsureEphemeralContainer(
 		return "", err
 	}
 
-	// Check if an existing kcap/knet ephemeral container is already running on this pod
+	// Check if an existing kubectl-net ephemeral container is already running on this pod
 	for _, status := range pod.Status.EphemeralContainerStatuses {
-		if status.State.Running != nil && (len(status.Name) >= 10 && status.Name[:10] == "knet-debug") {
+		if status.State.Running != nil && (strings.HasPrefix(status.Name, "kubectl-net-debug") || strings.HasPrefix(status.Name, "knet-debug")) {
 			return status.Name, nil
 		}
 	}
@@ -40,7 +41,7 @@ func (c *ClientContext) EnsureEphemeralContainer(
 	// Generate unique debug container name
 	randBytes := make([]byte, 3)
 	_, _ = rand.Read(randBytes)
-	debugContainerName := fmt.Sprintf("knet-debug-%s", hex.EncodeToString(randBytes))
+	debugContainerName := fmt.Sprintf("kubectl-net-debug-%s", hex.EncodeToString(randBytes))
 
 	if logWriter != nil {
 		fmt.Fprintf(logWriter, "==> Attaching ephemeral debug container '%s' (image: %s) to pod '%s'...\n",

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	utilexec "k8s.io/client-go/util/exec"
@@ -25,8 +26,8 @@ var (
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
 	Use:   "kubectl-net [command]",
-	Short: "kubectl-net (knet) - Comprehensive Kubernetes network debugging CLI toolkit",
-	Long: `kubectl-net (knet) is a versatile Kubernetes network debugging toolkit.
+	Short: "kubectl-net - Comprehensive Kubernetes network debugging CLI toolkit",
+	Long: `kubectl-net is a versatile Kubernetes network debugging toolkit.
 It uses Ephemeral Debug Containers to bypass container runtime limitations (containerd / GKE)
 and works seamlessly on distroless/scratch containers without modifying target workloads.
 
@@ -77,6 +78,9 @@ func init() {
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() {
+	if len(os.Args) > 0 && filepath.Base(os.Args[0]) == "kubectl_complete-net" {
+		RootCmd.SetArgs(append([]string{"__complete"}, os.Args[1:]...))
+	}
 	RootCmd.SilenceErrors = true
 	if err := RootCmd.Execute(); err != nil {
 		if exitErr, ok := err.(utilexec.CodeExitError); ok {

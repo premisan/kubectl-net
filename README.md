@@ -1,8 +1,8 @@
-# kubectl-net (knet)
+# kubectl-net
 
 [English](README.md) | [한국어](README_ko.md)
 
-**`kubectl-net` (`knet`)** is a comprehensive CLI toolkit and `kubectl` plugin designed for real-time network troubleshooting and diagnostics inside Kubernetes clusters.
+**`kubectl-net`** is a comprehensive CLI toolkit and `kubectl` plugin designed for real-time network troubleshooting and diagnostics inside Kubernetes clusters.
 
 Leveraging the standard Kubernetes **Ephemeral Debug Containers** mechanism, it operates seamlessly across GKE (Container-Optimized OS) and on-premise `containerd` environments, and works effortlessly with Distroless or Scratch images. It provides:
 
@@ -48,38 +48,45 @@ brew install tshark
 ### 1. Build
 ```bash
 make build
-# Generated binaries: ./bin/kubectl-net (and alias ./bin/knet)
+# Generated binaries: ./bin/kubectl-net (and helper ./bin/kubectl_complete-net)
 ```
 
 ### 2. Install (as kubectl plugin)
+The default install directory is `~/.local/bin` in your user home directory, requiring no `sudo` privileges:
+
 ```bash
 make install
-# Now executable anywhere via 'kubectl net <command>' or 'knet <command>'
+# Installs ~/.local/bin/kubectl-net and completion helper ~/.local/bin/kubectl_complete-net
 ```
+
+> [!NOTE]
+> Make sure `~/.local/bin` is in your `PATH`. If not, add the following to your shell configuration (`~/.zshrc` or `~/.bashrc`):
+> ```bash
+> export PATH="$HOME/.local/bin:$PATH"
+> ```
 
 ### 3. Shell Completion
 
-Configure tab completion for pod names and flags (e.g., `knet cap <TAB>`).
+`kubectl-net` adheres to Kubernetes' native plugin completion specification (`kubectl_complete-*`).  
+When running `make install`, the `kubectl_complete-net` helper is automatically installed to `~/.local/bin`. As long as standard `kubectl` completion is enabled in your shell, **dynamic tab completion for pods, namespaces, and flags will work out-of-the-box** (e.g., `kubectl net cap <TAB>`, `kubectl net curl <TAB>`) without needing extra `compdef` wrappers.
+
+If you haven't enabled `kubectl` shell completion yet, add the following to your shell configuration:
 
 #### zsh (macOS Default Shell)
 
-Add the following to your `~/.zshrc` and run `source ~/.zshrc`:
-
+Add to `~/.zshrc`:
 ```zsh
-# knet shell completion
-source <(knet completion zsh)
-compdef _kubectl-net knet
+source <(kubectl completion zsh)
 ```
+Then run `source ~/.zshrc`.
 
 #### bash
 
-Add the following to your `~/.bashrc`:
-
+Add to `~/.bashrc`:
 ```bash
-# knet shell completion
-source <(knet completion bash)
-compdef _kubectl-net knet
+source <(kubectl completion bash)
 ```
+Then run `source ~/.bashrc`.
 
 ---
 
@@ -199,12 +206,10 @@ kubectl net sh my-pod -n default
 
 ## 🗑️ Uninstallation
 
-To remove the `kubectl-net` plugin and its alias from your system:
+To remove the `kubectl-net` plugin and its completion helper:
 
 ```bash
-# 1. Remove installed binaries and symlink
-sudo rm -f /usr/local/bin/kubectl-net /usr/local/bin/knet
-
-# 2. (Optional) Remove shell completion settings from ~/.zshrc or ~/.bashrc if configured:
-#    Delete the lines containing 'knet completion' and 'compdef _kubectl-net knet'
+make uninstall
+# Or manually remove:
+# rm -f ~/.local/bin/kubectl-net ~/.local/bin/kubectl_complete-net
 ```

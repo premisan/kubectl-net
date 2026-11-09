@@ -1,8 +1,8 @@
-# kubectl-net (knet)
+# kubectl-net
 
 [English](README.md) | [한국어](README_ko.md)
 
-**`kubectl-net` (`knet`)** 은 Kubernetes 클러스터 내부의 네트워크 문제를 실시간으로 진단하고 분석할 수 있는 종합 CLI 툴킷(kubectl 플러그인)입니다.
+**`kubectl-net`** 은 Kubernetes 클러스터 내부의 네트워크 문제를 실시간으로 진단하고 분석할 수 있는 종합 CLI 툴킷(kubectl 플러그인)입니다.
 
 Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) Netcat 포트 접속/수신 테스트(`nc`)**, **6) 대화형 디버그 쉘(`sh`)** 을 지원합니다.
 
@@ -41,36 +41,45 @@ brew install tshark
 ### 1. 빌드 (Build)
 ```bash
 make build
-# 생성된 바이너리: ./bin/kubectl-net (및 alias ./bin/knet)
+# 생성된 바이너리: ./bin/kubectl-net (및 심볼릭 링크 ./bin/kubectl_complete-net)
 ```
 
 ### 2. 설치 (Install as kubectl plugin)
+기본 설치 경로는 사용자의 홈 디렉터리(`~/.local/bin`)입니다. `sudo` 권한 없이 안전하게 설치할 수 있습니다:
+
 ```bash
 make install
-# 이제 'kubectl net <명령어>' 또는 'knet <명령어>'로 어디서든 실행할 수 있습니다.
+# ~/.local/bin/kubectl-net 및 자동완성 헬퍼 ~/.local/bin/kubectl_complete-net 이 설치됩니다.
 ```
+
+> [!NOTE]
+> `~/.local/bin` 경로가 환경 변수 `PATH`에 등록되어 있어야 합니다. 등록되어 있지 않다면 셸 설정 파일(`~/.zshrc` 또는 `~/.bashrc`)에 아래 설정을 추가하세요:
+> ```bash
+> export PATH="$HOME/.local/bin:$PATH"
+> ```
 
 ### 3. 셸 자동완성 설정 (Shell Completion)
 
-`knet cap <TAB>` 시 파드 이름이 자동완성되도록 설정합니다.
+`kubectl net` 커맨드는 Kubernetes 표준 플러그인 완성 규격(`kubectl_complete-*`)을 지원합니다.  
+`make install` 시 `kubectl_complete-net` 헬퍼가 `~/.local/bin`에 함께 설치되므로, 셸에 `kubectl` 자체 자동완성이 설정되어 있다면 별도의 추가 설정 없이도 **`kubectl net cap <TAB>`**, **`kubectl net curl <TAB>`** 등 파드/네임스페이스/플래그 자동완성이 즉시 작동합니다.
+
+만약 `kubectl` 자동완성이 아직 설정되어 있지 않다면, 사용 중인 셸 설정 파일에 아래 라인을 추가하세요:
 
 #### zsh (macOS 기본 셸)
 
-아래 내용을 `~/.zshrc` 에 추가한 뒤 `source ~/.zshrc` 를 실행하세요:
-
+`~/.zshrc` 파일에 추가:
 ```zsh
-# knet 자동완성
-source <(knet completion zsh)
-compdef _kubectl-net knet
+source <(kubectl completion zsh)
 ```
+추가 후 `source ~/.zshrc` 를 실행합니다.
 
 #### bash
 
+`~/.bashrc` 파일에 추가:
 ```bash
-# knet 자동완성
-source <(knet completion bash)
-compdef _kubectl-net knet
+source <(kubectl completion bash)
 ```
+추가 후 `source ~/.bashrc` 를 실행합니다.
 
 ---
 
@@ -190,12 +199,10 @@ kubectl net sh my-pod -n default
 
 ## 🗑️ 플러그인 삭제 (Uninstallation)
 
-시스템에 설치된 `kubectl-net` 플러그인 및 별칭(alias)을 삭제하려면 아래 명령어를 실행하세요:
+설치된 `kubectl-net` 플러그인 및 자동완성 헬퍼를 삭제하려면 아래 명령어를 실행하세요:
 
 ```bash
-# 1. 설치된 바이너리 및 심볼릭 링크 삭제
-sudo rm -f /usr/local/bin/kubectl-net /usr/local/bin/knet
-
-# 2. (선택 사항) 셸 자동완성을 등록한 경우 ~/.zshrc 또는 ~/.bashrc에서 관련 설정 삭제
-#    'knet completion' 및 'compdef _kubectl-net knet' 관련 라인을 제거합니다.
+make uninstall
+# 또는 수동 삭제:
+# rm -f ~/.local/bin/kubectl-net ~/.local/bin/kubectl_complete-net
 ```
