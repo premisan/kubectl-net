@@ -11,14 +11,24 @@ import (
 	"github.com/premisan/kubectl-net/pkg/k8s"
 )
 
+const curlUsage = "kubectl net curl [GLOBAL_FLAGS...] [POD_NAME] [CURL_OPTIONS...] [URL]"
+
+type curlOptions struct {
+	flags    commonFlags
+	podName  string
+	curlArgs []string
+}
+
 var curlCmd = &cobra.Command{
-	Use:   "curl [POD_NAME] [CURL_OPTIONS...] [URL]",
+	Use:   "curl [GLOBAL_FLAGS...] [POD_NAME] [CURL_OPTIONS...] [URL]",
 	Short: "Execute curl HTTP/HTTPS requests from inside a target pod",
 	Long: `Execute curl HTTP/HTTPS network tests from inside a Kubernetes pod.
 Uses an Ephemeral Debug Container to test connectivity to other pods, internal services,
 or external URLs directly from the target pod's network namespace.
 
-Supports all standard curl flags (-v, -k, -X POST, -H, -d, -I, -L, --connect-timeout, etc.).`,
+All kubectl-net flags (-n, -c, --image, --context, --kubeconfig, -v) must be placed
+BEFORE POD_NAME. Everything AFTER POD_NAME is passed verbatim to curl (-v, -k, -X POST,
+-H, -d, -I, -L, -c, -n, --connect-timeout, etc.).`,
 	Example: `  # Basic GET request from pod to internal cluster service:
   kubectl net curl my-pod http://backend-service.default.svc:8080/healthz
 
@@ -29,135 +39,46 @@ Supports all standard curl flags (-v, -k, -X POST, -H, -d, -I, -L, --connect-tim
   # Insecure HTTPS request with timeout:
   kubectl net curl my-pod -k -v --connect-timeout 5 https://10.96.0.1:443
 
-  # Target a specific namespace and container:
-  kubectl net curl my-pod -n production -c app-container -I https://google.com`,
+  # Target a specific namespace and container (kubectl-net flags before POD_NAME):
+  kubectl net curl -n production -c app-container my-pod -I https://google.com`,
 	DisableFlagParsing: true,
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) == 0 {
-			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
-		}
-		return nil, cobra.ShellCompDirectiveNoFileComp
+		return completePrePodArgs(args, toComplete, nil)
 	},
 	RunE: func(cmd *cobra.Command, rawArgs []string) error {
-		// Handle help flags
-		for _, arg := range rawArgs {
-			if arg == "--help" || arg == "-h" {
-				return cmd.Help()
-			}
+		opts, showHelp, err := parseCurlArgs(rawArgs, defaultCommonFlags())
+		if err != nil {
+			return err
 		}
-
-		if len(rawArgs) == 0 {
+		if showHelp {
 			return cmd.Help()
 		}
 
-		// Parse arguments and flags manually for complete curl flag passthrough
-		var (
-			podName       string
-			namespace     = globalNamespace
-			containerName = globalContainer
-			debugImage    = globalDebugImage
-			kubeconfig    = globalKubeconfig
-			kubeContext   = globalContext
-			curlArgs      []string
-		)
-
-		i := 0
-		for i < len(rawArgs) {
-			arg := rawArgs[i]
-
-			// Global / K8s flag overrides
-			if arg == "-n" && i+1 < len(rawArgs) {
-				namespace = rawArgs[i+1]
-				i += 2
-				continue
-			} else if strings.HasPrefix(arg, "--namespace=") {
-				namespace = strings.TrimPrefix(arg, "--namespace=")
-				i++
-				continue
-			} else if arg == "--namespace" && i+1 < len(rawArgs) {
-				namespace = rawArgs[i+1]
-				i += 2
-				continue
-			} else if arg == "-c" && i+1 < len(rawArgs) {
-				// Note: if podName is already set, -c could be curl's cookie jar (-c file).
-				// If podName is NOT set yet, -c refers to target container
-				if podName == "" {
-					containerName = rawArgs[i+1]
-					i += 2
-					continue
-				}
-			} else if strings.HasPrefix(arg, "--container=") {
-				containerName = strings.TrimPrefix(arg, "--container=")
-				i++
-				continue
-			} else if arg == "--container" && i+1 < len(rawArgs) {
-				containerName = rawArgs[i+1]
-				i += 2
-				continue
-			} else if strings.HasPrefix(arg, "--image=") {
-				debugImage = strings.TrimPrefix(arg, "--image=")
-				i++
-				continue
-			} else if arg == "--image" && i+1 < len(rawArgs) {
-				debugImage = rawArgs[i+1]
-				i += 2
-				continue
-			} else if strings.HasPrefix(arg, "--kubeconfig=") {
-				kubeconfig = strings.TrimPrefix(arg, "--kubeconfig=")
-				i++
-				continue
-			} else if strings.HasPrefix(arg, "--context=") {
-				kubeContext = strings.TrimPrefix(arg, "--context=")
-				i++
-				continue
-			}
-
-			// First non-flag argument is target Pod Name
-			if podName == "" && !strings.HasPrefix(arg, "-") {
-				podName = arg
-				i++
-				continue
-			}
-
-			// All other args belong to curl
-			curlArgs = append(curlArgs, arg)
-			i++
-		}
-
-		if podName == "" {
-			return fmt.Errorf("target pod name is required. Usage: kubectl net curl [POD_NAME] [CURL_OPTIONS...] [URL]")
-		}
-
-		if len(curlArgs) == 0 {
-			return fmt.Errorf("URL or curl arguments required. Example: kubectl net curl %s http://example.com", podName)
-		}
-
 		ctx := context.Background()
-		clientCtx, err := k8s.NewClientContext(kubeconfig, kubeContext, namespace)
+		clientCtx, err := k8s.NewClientContext(opts.flags.kubeconfig, opts.flags.kubeContext, opts.flags.namespace)
 		if err != nil {
 			return fmt.Errorf("failed to configure kubernetes client: %w", err)
 		}
 
-		// Verify Pod & find container
-		pod, err := clientCtx.GetPod(ctx, podName)
+		pod, err := clientCtx.GetPod(ctx, opts.podName)
 		if err != nil {
 			return err
 		}
 
-		resolvedContainer, err := k8s.FindTargetContainer(pod, containerName)
+		resolvedContainer, err := k8s.FindTargetContainer(pod, opts.flags.containerName)
 		if err != nil {
 			return err
 		}
 
-		finalCurlCmd := append([]string{"curl"}, curlArgs...)
+		finalCurlCmd := append([]string{"curl"}, opts.curlArgs...)
 		fmt.Fprintf(os.Stderr, "==> Executing in pod '%s' (namespace: %s, container: %s): %s\n",
-			podName, clientCtx.Namespace, resolvedContainer, strings.Join(finalCurlCmd, " "))
+			opts.podName, clientCtx.Namespace, resolvedContainer, strings.Join(finalCurlCmd, " "))
 
 		return clientCtx.RunInEphemeral(
 			ctx,
-			podName,
+			opts.podName,
 			resolvedContainer,
-			debugImage,
+			opts.flags.resolveDebugImage(k8s.DefaultDebugImage),
 			finalCurlCmd,
 			os.Stdin,
 			os.Stdout,
@@ -166,6 +87,23 @@ Supports all standard curl flags (-v, -k, -X POST, -H, -d, -I, -L, --connect-tim
 			os.Stderr,
 		)
 	},
+}
+
+func parseCurlArgs(rawArgs []string, defaults commonFlags) (curlOptions, bool, error) {
+	flags, podName, postPodArgs, showHelp, err := parsePrePodArgs(rawArgs, defaults, curlUsage, nil)
+	if err != nil || showHelp {
+		return curlOptions{}, showHelp, err
+	}
+
+	if len(postPodArgs) == 0 {
+		return curlOptions{}, false, fmt.Errorf("URL or curl arguments required. Example: kubectl net curl %s http://example.com", podName)
+	}
+
+	return curlOptions{
+		flags:    flags,
+		podName:  podName,
+		curlArgs: postPodArgs,
+	}, false, nil
 }
 
 func init() {

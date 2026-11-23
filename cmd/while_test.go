@@ -33,8 +33,8 @@ func TestParseWhileArgs(t *testing.T) {
 			wantHelp: true,
 		},
 		{
-			name:     "help flag after pod name before command",
-			rawArgs:  []string{"my-pod", "-h"},
+			name:     "short help flag before pod name",
+			rawArgs:  []string{"-h"},
 			wantHelp: true,
 		},
 		{
@@ -48,57 +48,7 @@ func TestParseWhileArgs(t *testing.T) {
 			},
 		},
 		{
-			name:    "custom interval after pod name",
-			rawArgs: []string{"my-pod", "--interval", "5", "curl", "-v", "https://ifconfig.me/"},
-			wantOpts: whileOptions{
-				podName:     "my-pod",
-				interval:    "5",
-				debugImage:  "nicolaka/netshoot:latest",
-				commandArgs: []string{"curl", "-v", "https://ifconfig.me/"},
-			},
-		},
-		{
-			name:    "custom interval with equals syntax",
-			rawArgs: []string{"my-pod", "--interval=5", "curl", "-v", "https://ifconfig.me/"},
-			wantOpts: whileOptions{
-				podName:     "my-pod",
-				interval:    "5",
-				debugImage:  "nicolaka/netshoot:latest",
-				commandArgs: []string{"curl", "-v", "https://ifconfig.me/"},
-			},
-		},
-		{
-			name:    "short -i interval after pod name and curl -i passthrough",
-			rawArgs: []string{"my-pod", "-i", "5", "curl", "-i", "https://ifconfig.me/"},
-			wantOpts: whileOptions{
-				podName:     "my-pod",
-				interval:    "5",
-				debugImage:  "nicolaka/netshoot:latest",
-				commandArgs: []string{"curl", "-i", "https://ifconfig.me/"},
-			},
-		},
-		{
-			name:    "short -i=5 syntax after pod name",
-			rawArgs: []string{"my-pod", "-i=5", "curl", "-v", "https://ifconfig.me/"},
-			wantOpts: whileOptions{
-				podName:     "my-pod",
-				interval:    "5",
-				debugImage:  "nicolaka/netshoot:latest",
-				commandArgs: []string{"curl", "-v", "https://ifconfig.me/"},
-			},
-		},
-		{
-			name:    "fractional interval",
-			rawArgs: []string{"my-pod", "--interval", "0.5", "curl", "-s", "https://ifconfig.me/"},
-			wantOpts: whileOptions{
-				podName:     "my-pod",
-				interval:    "0.5",
-				debugImage:  "nicolaka/netshoot:latest",
-				commandArgs: []string{"curl", "-s", "https://ifconfig.me/"},
-			},
-		},
-		{
-			name:    "interval before pod name is allowed",
+			name:    "custom interval before pod name",
 			rawArgs: []string{"--interval", "5", "my-pod", "curl", "-v", "https://ifconfig.me/"},
 			wantOpts: whileOptions{
 				podName:     "my-pod",
@@ -108,7 +58,7 @@ func TestParseWhileArgs(t *testing.T) {
 			},
 		},
 		{
-			name:    "interval=5 before pod name is allowed",
+			name:    "custom interval with equals syntax before pod name",
 			rawArgs: []string{"--interval=5", "my-pod", "curl", "-v", "https://ifconfig.me/"},
 			wantOpts: whileOptions{
 				podName:     "my-pod",
@@ -118,17 +68,17 @@ func TestParseWhileArgs(t *testing.T) {
 			},
 		},
 		{
-			name:    "short -i before pod name is allowed",
-			rawArgs: []string{"-i", "5", "my-pod", "curl", "-v", "https://ifconfig.me/"},
+			name:    "short -i before pod name and curl -i passthrough",
+			rawArgs: []string{"-i", "5", "my-pod", "curl", "-i", "https://ifconfig.me/"},
 			wantOpts: whileOptions{
 				podName:     "my-pod",
 				interval:    "5",
 				debugImage:  "nicolaka/netshoot:latest",
-				commandArgs: []string{"curl", "-v", "https://ifconfig.me/"},
+				commandArgs: []string{"curl", "-i", "https://ifconfig.me/"},
 			},
 		},
 		{
-			name:    "short -i=5 before pod name is allowed",
+			name:    "short -i=5 syntax before pod name",
 			rawArgs: []string{"-i=5", "my-pod", "curl", "-v", "https://ifconfig.me/"},
 			wantOpts: whileOptions{
 				podName:     "my-pod",
@@ -138,8 +88,18 @@ func TestParseWhileArgs(t *testing.T) {
 			},
 		},
 		{
-			name:    "global flags before and after pod name, command flags passed through verbatim",
-			rawArgs: []string{"-n", "prod", "my-pod", "--interval", "3", "-c", "app", "curl", "-n", "-c", "/tmp/cookies", "-v", "-h", "--interval", "99", "https://ifconfig.me/"},
+			name:    "fractional interval before pod name",
+			rawArgs: []string{"--interval", "0.5", "my-pod", "curl", "-s", "https://ifconfig.me/"},
+			wantOpts: whileOptions{
+				podName:     "my-pod",
+				interval:    "0.5",
+				debugImage:  "nicolaka/netshoot:latest",
+				commandArgs: []string{"curl", "-s", "https://ifconfig.me/"},
+			},
+		},
+		{
+			name:    "global flags and interval before pod name, command flags passed through verbatim",
+			rawArgs: []string{"-n", "prod", "--interval", "3", "-c", "app", "my-pod", "curl", "-n", "-c", "/tmp/cookies", "-v", "-h", "--interval", "99", "https://ifconfig.me/"},
 			wantOpts: whileOptions{
 				podName:       "my-pod",
 				interval:      "3",
@@ -150,8 +110,8 @@ func TestParseWhileArgs(t *testing.T) {
 			},
 		},
 		{
-			name:    "double dash separator passes everything after",
-			rawArgs: []string{"my-pod", "--interval", "2", "--", "curl", "-H", "Content-Type: application/json", "http://svc:8080"},
+			name:    "double dash separator after pod name passes everything after",
+			rawArgs: []string{"--interval", "2", "my-pod", "--", "curl", "-H", "Content-Type: application/json", "http://svc:8080"},
 			wantOpts: whileOptions{
 				podName:     "my-pod",
 				interval:    "2",
@@ -160,44 +120,50 @@ func TestParseWhileArgs(t *testing.T) {
 			},
 		},
 		{
+			name:        "interval after pod name is rejected",
+			rawArgs:     []string{"my-pod", "--interval", "5", "curl", "-v", "https://ifconfig.me/"},
+			expectError: true,
+			errContains: "must be placed before POD_NAME",
+		},
+		{
+			name:        "namespace flag after pod name is rejected",
+			rawArgs:     []string{"my-pod", "-n", "prod", "curl", "https://ifconfig.me/"},
+			expectError: true,
+			errContains: "must be placed before POD_NAME",
+		},
+		{
 			name:        "missing command after pod name",
 			rawArgs:     []string{"my-pod"},
 			expectError: true,
 			errContains: "command to execute is required",
 		},
 		{
-			name:        "missing command after interval",
-			rawArgs:     []string{"my-pod", "--interval", "5"},
-			expectError: true,
-			errContains: "command to execute is required",
-		},
-		{
-			name:        "missing interval value",
-			rawArgs:     []string{"my-pod", "--interval"},
+			name:        "missing interval value before pod name",
+			rawArgs:     []string{"--interval"},
 			expectError: true,
 			errContains: "requires a value",
 		},
 		{
 			name:        "zero interval is rejected",
-			rawArgs:     []string{"my-pod", "--interval", "0", "date"},
+			rawArgs:     []string{"--interval", "0", "my-pod", "date"},
 			expectError: true,
 			errContains: "positive number",
 		},
 		{
 			name:        "negative interval is rejected",
-			rawArgs:     []string{"my-pod", "--interval", "-2", "date"},
+			rawArgs:     []string{"--interval", "-2", "my-pod", "date"},
 			expectError: true,
 			errContains: "positive number",
 		},
 		{
 			name:        "non-numeric interval is rejected",
-			rawArgs:     []string{"my-pod", "--interval", "5; echo pwned", "date"},
+			rawArgs:     []string{"--interval", "5; echo pwned", "my-pod", "date"},
 			expectError: true,
 			errContains: "positive number",
 		},
 		{
-			name:        "unknown flag before command is rejected",
-			rawArgs:     []string{"my-pod", "--intervl", "5", "date"},
+			name:        "unknown flag before pod name is rejected",
+			rawArgs:     []string{"--intervl", "5", "my-pod", "date"},
 			expectError: true,
 			errContains: "unknown flag",
 		},
@@ -308,17 +274,17 @@ func TestWhileCmdValidation(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "missing command returns error",
-			args:        []string{"while", "my-pod", "--interval", "5"},
-			expectError: true,
-		},
-		{
-			name:        "invalid interval returns error",
-			args:        []string{"while", "my-pod", "--interval", "abc", "curl", "https://ifconfig.me/"},
+			name:        "interval placed after pod name returns error",
+			args:        []string{"while", "my-pod", "--interval", "5", "curl", "https://ifconfig.me/"},
 			expectError: true,
 		},
 		{
 			name:        "invalid interval before pod name returns error",
+			args:        []string{"while", "--interval", "abc", "my-pod", "curl", "https://ifconfig.me/"},
+			expectError: true,
+		},
+		{
+			name:        "zero interval before pod name returns error",
 			args:        []string{"while", "-i", "0", "my-pod", "curl", "https://ifconfig.me/"},
 			expectError: true,
 		},

@@ -2,85 +2,112 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/premisan/kubectl-net/pkg/capture"
 	"github.com/premisan/kubectl-net/pkg/k8s"
 )
 
-var capOpts = capture.NewDefaultOptions()
+const capUsage = "kubectl net cap [GLOBAL_FLAGS...] [POD_NAME] [CAP_OPTIONS...]"
 
 var capCmd = &cobra.Command{
-	Use:     "cap [POD_NAME]",
+	Use:     "cap [GLOBAL_FLAGS...] [POD_NAME] [CAP_OPTIONS...]",
 	Aliases: []string{"capture", "sniff"},
 	Short:   "Capture network packets from a pod and stream to Wireshark / pcap",
 	Long: `Capture network packets from a Kubernetes pod/container in real time.
 Streams packets directly into a local Wireshark GUI, saves to a .pcap file,
-or outputs to stdout for piping to tshark.`,
+or outputs to stdout for piping to tshark.
+
+All kubectl-net flags (-n, -c, --image, --context, --kubeconfig, -v) must be placed
+BEFORE POD_NAME. Capture options (-i, -f, -o, -m, --wireshark-path) must be placed
+AFTER POD_NAME.`,
 	Example: `  # Live packet capture to Wireshark GUI:
-  kubectl net cap my-pod -n default
+  kubectl net cap -n default my-pod
 
   # Apply BPF filter (HTTP/HTTPS only):
-  kubectl net cap my-pod -f "tcp port 80 or tcp port 443"
+  kubectl net cap -n default my-pod -f "tcp port 80 or tcp port 443"
 
   # Save to a local .pcap file:
   kubectl net cap my-pod -o ./traffic.pcap
 
   # Stream to stdout for tshark:
   kubectl net cap my-pod -o - | tshark -r -`,
-	Args: cobra.MaximumNArgs(1),
+	DisableFlagParsing: true,
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) == 0 {
-			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
-		}
-		return nil, cobra.ShellCompDirectiveNoFileComp
+		return completePrePodArgs(args, toComplete, nil)
 	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			capOpts.PodName = args[0]
+	RunE: func(cmd *cobra.Command, rawArgs []string) error {
+		opts, showHelp, err := parseCapArgs(rawArgs, defaultCommonFlags())
+		if err != nil {
+			return err
+		}
+		if showHelp {
+			return cmd.Help()
 		}
 
-		// Bind persistent global flags
-		capOpts.Namespace = globalNamespace
-		capOpts.KubeContext = globalContext
-		capOpts.Kubeconfig = globalKubeconfig
-		if capOpts.ContainerName == "" {
-			capOpts.ContainerName = globalContainer
-		}
-		if capOpts.DebugImage == "" {
-			capOpts.DebugImage = globalDebugImage
-		}
-		capOpts.Verbose = globalVerbose
-
-		if err := capOpts.Validate(); err != nil {
+		if err := opts.Validate(); err != nil {
 			return err
 		}
 
-		runner := capture.NewRunner(capOpts)
+		runner := capture.NewRunner(opts)
 		return runner.Run(context.Background())
 	},
 }
 
-func init() {
-	capCmd.Flags().StringVarP(&capOpts.PodName, "pod", "p", "", "Target Pod name")
-	capCmd.Flags().StringVarP(&capOpts.ContainerName, "container", "c", "", "Target Container name (defaults to first container)")
-	capCmd.Flags().StringVarP(&capOpts.Interface, "interface", "i", "any", "Network interface to capture (e.g. eth0, any)")
-	capCmd.Flags().StringVarP(&capOpts.Filter, "filter", "f", "", "tcpdump BPF filter expression (e.g. 'tcp port 80')")
-	capCmd.Flags().StringVarP(&capOpts.OutputFile, "output", "o", "", "Output destination: path to .pcap file, '-' for stdout, or omit to launch Wireshark")
-	capCmd.Flags().StringVarP((*string)(&capOpts.Mode), "mode", "m", string(capture.ModeAuto), "Capture mode: 'auto', 'ephemeral', or 'direct'")
-	capCmd.Flags().StringVar(&capOpts.WiresharkPath, "wireshark-path", "", "Custom path to Wireshark binary")
+func newCapFlagSet(opts *capture.Options) *pflag.FlagSet {
+	fs := pflag.NewFlagSet("cap", pflag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVarP(&opts.Interface, "interface", "i", "any", "Network interface to capture (e.g. eth0, any)")
+	fs.StringVarP(&opts.Filter, "filter", "f", "", "tcpdump BPF filter expression (e.g. 'tcp port 80')")
+	fs.StringVarP(&opts.OutputFile, "output", "o", "", "Output destination: path to .pcap file, '-' for stdout, or omit to launch Wireshark")
+	fs.StringVarP((*string)(&opts.Mode), "mode", "m", string(capture.ModeAuto), "Capture mode: 'auto', 'ephemeral', or 'direct'")
+	fs.StringVar(&opts.WiresharkPath, "wireshark-path", "", "Custom path to Wireshark binary")
+	return fs
+}
 
-	_ = capCmd.RegisterFlagCompletionFunc("pod", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
-	})
-	_ = capCmd.RegisterFlagCompletionFunc("container", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		targetPod := capOpts.PodName
-		if len(args) > 0 {
-			targetPod = args[0]
+func parseCapArgs(rawArgs []string, defaults commonFlags) (*capture.Options, bool, error) {
+	flags, podName, postPodArgs, showHelp, err := parsePrePodArgs(rawArgs, defaults, capUsage, nil)
+	if err != nil || showHelp {
+		return nil, showHelp, err
+	}
+
+	opts := capture.NewDefaultOptions()
+	opts.PodName = podName
+	opts.Namespace = flags.namespace
+	opts.ContainerName = flags.containerName
+	opts.DebugImage = flags.resolveDebugImage(k8s.DefaultDebugImage)
+	opts.Kubeconfig = flags.kubeconfig
+	opts.KubeContext = flags.kubeContext
+	opts.Verbose = flags.verbose
+
+	fs := newCapFlagSet(opts)
+	if err := fs.Parse(postPodArgs); err != nil {
+		if errors.Is(err, pflag.ErrHelp) {
+			return nil, true, nil
 		}
-		return k8s.CompleteContainers(targetPod, globalNamespace, globalKubeconfig, globalContext)
-	})
+		return nil, false, wrapPostPodFlagError("cap", podName, err)
+	}
+
+	if extra := fs.Args(); len(extra) > 0 {
+		return nil, false, fmt.Errorf("unexpected positional arguments after POD_NAME: %s (Usage: %s)", strings.Join(extra, " "), capUsage)
+	}
+
+	return opts, false, nil
+}
+
+func init() {
+	// Register command-specific flags on capCmd for help output.
+	capCmd.Flags().StringP("interface", "i", "any", "Network interface to capture (e.g. eth0, any) (place after POD_NAME)")
+	capCmd.Flags().StringP("filter", "f", "", "tcpdump BPF filter expression (e.g. 'tcp port 80') (place after POD_NAME)")
+	capCmd.Flags().StringP("output", "o", "", "Output destination: path to .pcap file, '-' for stdout, or omit to launch Wireshark (place after POD_NAME)")
+	capCmd.Flags().StringP("mode", "m", string(capture.ModeAuto), "Capture mode: 'auto', 'ephemeral', or 'direct' (place after POD_NAME)")
+	capCmd.Flags().String("wireshark-path", "", "Custom path to Wireshark binary (place after POD_NAME)")
 
 	RootCmd.AddCommand(capCmd)
 }

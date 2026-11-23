@@ -17,7 +17,10 @@ import (
 	"github.com/premisan/kubectl-net/pkg/k8s"
 )
 
-const defaultWhileInterval = "1"
+const (
+	defaultWhileInterval = "1"
+	whileUsage           = "kubectl net while [GLOBAL_FLAGS...] [-i|--interval SECONDS] [POD_NAME] [COMMAND...]"
+)
 
 type whileOptions struct {
 	podName       string
@@ -25,6 +28,7 @@ type whileOptions struct {
 	namespace     string
 	containerName string
 	debugImage    string
+	imageExplicit bool
 	kubeconfig    string
 	kubeContext   string
 	verbose       bool
@@ -32,44 +36,46 @@ type whileOptions struct {
 }
 
 var whileCmd = &cobra.Command{
-	Use:   "while [-i|--interval SECONDS] [POD_NAME] [COMMAND...]",
+	Use:   "while [GLOBAL_FLAGS...] [-i|--interval SECONDS] [POD_NAME] [COMMAND...]",
 	Short: "Repeatedly execute a command at a fixed interval inside a target pod",
 	Long: `Repeatedly execute an arbitrary command inside a Kubernetes pod's network namespace
 using an Ephemeral Debug Container, running an infinite shell loop:
 
   while true; do <command>; echo; sleep <interval>; done
 
-Flags for kubectl-net (such as -i/--interval, -n/--namespace, -c/--container) may be placed
-before or after POD_NAME, as long as they appear before the command to execute.
-Everything starting from the command token onward is passed verbatim to the debug container.`,
+All kubectl-net flags (-i/--interval, -n/--namespace, -c/--container, --image,
+--context, --kubeconfig, -v/--verbose) must be placed BEFORE POD_NAME.
+Everything AFTER POD_NAME is passed verbatim as the command to repeat.`,
 	Example: `  # Repeat curl every 1 second (default interval):
   kubectl net while my-pod curl -v https://ifconfig.me/
 
-  # Repeat curl every 5 seconds (interval after or before pod name):
-  kubectl net while my-pod --interval 5 curl -v https://ifconfig.me/
+  # Repeat curl every 5 seconds (--interval or -i before POD_NAME):
+  kubectl net while --interval 5 my-pod curl -v https://ifconfig.me/
   kubectl net while -i 5 my-pod curl -v https://ifconfig.me/
 
-  # Repeat curl with headers and custom namespace every 2 seconds:
-  kubectl net while my-pod -n production -i 2 curl -s -I http://backend-svc:8080/healthz
+  # Target a specific namespace and repeat every 2 seconds:
+  kubectl net while -n production -i 2 my-pod curl -s -I http://backend-svc:8080/healthz
 
   # Repeat a shell pipeline every 3 seconds:
-  kubectl net while my-pod -i 3 "curl -s https://ifconfig.me/ && echo"`,
+  kubectl net while -i 3 my-pod "curl -s https://ifconfig.me/ && echo"`,
 	DisableFlagParsing: true,
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if shouldCompleteWhilePodName(args) {
-			return k8s.CompletePods(toComplete, globalNamespace, globalKubeconfig, globalContext)
-		}
-		return nil, cobra.ShellCompDirectiveNoFileComp
+		return completePrePodArgs(args, toComplete, map[string]bool{
+			"-i":         true,
+			"--interval": true,
+		})
 	},
 	RunE: func(cmd *cobra.Command, rawArgs []string) error {
+		cf := defaultCommonFlags()
 		defaults := whileOptions{
 			interval:      defaultWhileInterval,
-			namespace:     globalNamespace,
-			containerName: globalContainer,
-			debugImage:    globalDebugImage,
-			kubeconfig:    globalKubeconfig,
-			kubeContext:   globalContext,
-			verbose:       globalVerbose,
+			namespace:     cf.namespace,
+			containerName: cf.containerName,
+			debugImage:    cf.debugImage,
+			imageExplicit: cf.imageExplicit,
+			kubeconfig:    cf.kubeconfig,
+			kubeContext:   cf.kubeContext,
+			verbose:       cf.verbose,
 		}
 
 		opts, showHelp, err := parseWhileArgs(rawArgs, defaults)
@@ -118,11 +124,18 @@ Everything starting from the command token onward is passed verbatim to the debu
 			stderrWriter = nil
 		}
 
+		debugImage := k8s.DefaultDebugImage
+		if opts.imageExplicit && opts.debugImage != "" {
+			debugImage = opts.debugImage
+		} else if opts.debugImage != "" {
+			debugImage = opts.debugImage
+		}
+
 		return clientCtx.RunInEphemeral(
 			ctx,
 			opts.podName,
 			resolvedContainer,
-			opts.debugImage,
+			debugImage,
 			whileExecCmd,
 			os.Stdin,
 			os.Stdout,
@@ -139,90 +152,51 @@ func parseWhileArgs(rawArgs []string, defaults whileOptions) (whileOptions, bool
 		opts.interval = defaultWhileInterval
 	}
 
-	if len(rawArgs) == 0 {
-		return opts, true, nil
+	cfDefaults := commonFlags{
+		namespace:     opts.namespace,
+		containerName: opts.containerName,
+		debugImage:    opts.debugImage,
+		imageExplicit: opts.imageExplicit,
+		kubeconfig:    opts.kubeconfig,
+		kubeContext:   opts.kubeContext,
+		verbose:       opts.verbose,
 	}
 
-	i := 0
-	// Phase 1: parse optional flags (-i/--interval, global flags) before POD_NAME, then POD_NAME itself.
-	for i < len(rawArgs) {
-		arg := rawArgs[i]
-
-		if arg == "-h" || arg == "--help" {
-			return opts, true, nil
-		}
-
-		if consumed, err := parseWhileIntervalFlag(rawArgs, i, &opts); err != nil {
-			return opts, false, err
-		} else if consumed > 0 {
-			i += consumed
-			continue
-		}
-
-		if consumed, err := parseWhileGlobalFlag(rawArgs, i, &opts); err != nil {
-			return opts, false, err
-		} else if consumed > 0 {
-			i += consumed
-			continue
-		}
-
-		if arg == "--" {
-			return opts, false, fmt.Errorf("target pod name is required before '--'. Usage: kubectl net while [-i|--interval SECONDS] [POD_NAME] [COMMAND...]")
-		}
-
-		if strings.HasPrefix(arg, "-") {
-			return opts, false, fmt.Errorf("unknown flag before pod name: %s", arg)
-		}
-
-		opts.podName = arg
-		i++
-		break
+	flags, podName, postPodArgs, showHelp, err := parsePrePodArgs(
+		rawArgs,
+		cfDefaults,
+		whileUsage,
+		func(args []string, i int) (int, error) {
+			return parseWhileIntervalFlag(args, i, &opts)
+		},
+	)
+	if err != nil || showHelp {
+		return opts, showHelp, err
 	}
 
-	if opts.podName == "" {
-		return opts, false, fmt.Errorf("target pod name is required. Usage: kubectl net while [-i|--interval SECONDS] [POD_NAME] [COMMAND...]")
+	opts.podName = podName
+	opts.namespace = flags.namespace
+	opts.containerName = flags.containerName
+	opts.debugImage = flags.debugImage
+	opts.imageExplicit = flags.imageExplicit
+	opts.kubeconfig = flags.kubeconfig
+	opts.kubeContext = flags.kubeContext
+	opts.verbose = flags.verbose
+
+	if len(postPodArgs) == 0 {
+		return opts, false, fmt.Errorf("command to execute is required. Example: kubectl net while -i 5 %s curl -v https://ifconfig.me/", opts.podName)
 	}
 
-	// Phase 2: parse -i/--interval and optional global flags after POD_NAME until COMMAND begins.
-	for i < len(rawArgs) {
-		arg := rawArgs[i]
-
-		if arg == "--" {
-			opts.commandArgs = append([]string(nil), rawArgs[i+1:]...)
-			break
+	if postPodArgs[0] == "--" {
+		postPodArgs = postPodArgs[1:]
+		if len(postPodArgs) == 0 {
+			return opts, false, fmt.Errorf("command to execute is required after '--'. Example: kubectl net while -i 5 %s -- curl -v https://ifconfig.me/", opts.podName)
 		}
-
-		if arg == "-h" || arg == "--help" {
-			return opts, true, nil
-		}
-
-		if consumed, err := parseWhileIntervalFlag(rawArgs, i, &opts); err != nil {
-			return opts, false, err
-		} else if consumed > 0 {
-			i += consumed
-			continue
-		}
-
-		if consumed, err := parseWhileGlobalFlag(rawArgs, i, &opts); err != nil {
-			return opts, false, err
-		} else if consumed > 0 {
-			i += consumed
-			continue
-		}
-
-		if strings.HasPrefix(arg, "-") {
-			return opts, false, fmt.Errorf("unknown flag '%s' before command (use '--' to separate flags from the command if needed)", arg)
-		}
-
-		// First non-flag token starts the command; pass everything from here verbatim.
-		opts.commandArgs = append([]string(nil), rawArgs[i:]...)
-		break
+	} else if strings.HasPrefix(postPodArgs[0], "-") {
+		return opts, false, fmt.Errorf("flag %q appeared after POD_NAME; kubectl-net flags (such as -i/--interval, -n/--namespace) must be placed before POD_NAME (e.g. kubectl net while -i 5 %s curl ...)", postPodArgs[0], opts.podName)
 	}
 
-	if len(opts.commandArgs) == 0 {
-		return opts, false, fmt.Errorf("command to execute is required. Example: kubectl net while %s --interval 5 curl -v https://ifconfig.me/", opts.podName)
-	}
-
+	opts.commandArgs = postPodArgs
 	return opts, false, nil
 }
 
@@ -254,88 +228,6 @@ func parseWhileIntervalFlag(rawArgs []string, i int, opts *whileOptions) (int, e
 	return 0, nil
 }
 
-func shouldCompleteWhilePodName(args []string) bool {
-	i := 0
-	for i < len(args) {
-		arg := args[i]
-		switch arg {
-		case "-i", "--interval", "-n", "--namespace", "-c", "--container", "--image", "--kubeconfig", "--context":
-			if i+1 >= len(args) {
-				// Currently completing the value of this flag, not POD_NAME
-				return false
-			}
-			i += 2
-			continue
-		case "-v", "--verbose":
-			i++
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			i++
-			continue
-		}
-		// Found a positional argument (POD_NAME already provided)
-		return false
-	}
-	return true
-}
-
-func parseWhileGlobalFlag(rawArgs []string, i int, opts *whileOptions) (int, error) {
-	arg := rawArgs[i]
-	switch {
-	case arg == "-n" || arg == "--namespace":
-		if i+1 >= len(rawArgs) {
-			return 0, fmt.Errorf("%s requires a value", arg)
-		}
-		opts.namespace = rawArgs[i+1]
-		return 2, nil
-	case strings.HasPrefix(arg, "--namespace="):
-		opts.namespace = strings.TrimPrefix(arg, "--namespace=")
-		return 1, nil
-	case arg == "-c" || arg == "--container":
-		if i+1 >= len(rawArgs) {
-			return 0, fmt.Errorf("%s requires a value", arg)
-		}
-		opts.containerName = rawArgs[i+1]
-		return 2, nil
-	case strings.HasPrefix(arg, "--container="):
-		opts.containerName = strings.TrimPrefix(arg, "--container=")
-		return 1, nil
-	case arg == "--image":
-		if i+1 >= len(rawArgs) {
-			return 0, fmt.Errorf("--image requires a value")
-		}
-		opts.debugImage = rawArgs[i+1]
-		return 2, nil
-	case strings.HasPrefix(arg, "--image="):
-		opts.debugImage = strings.TrimPrefix(arg, "--image=")
-		return 1, nil
-	case arg == "--kubeconfig":
-		if i+1 >= len(rawArgs) {
-			return 0, fmt.Errorf("--kubeconfig requires a value")
-		}
-		opts.kubeconfig = rawArgs[i+1]
-		return 2, nil
-	case strings.HasPrefix(arg, "--kubeconfig="):
-		opts.kubeconfig = strings.TrimPrefix(arg, "--kubeconfig=")
-		return 1, nil
-	case arg == "--context":
-		if i+1 >= len(rawArgs) {
-			return 0, fmt.Errorf("--context requires a value")
-		}
-		opts.kubeContext = rawArgs[i+1]
-		return 2, nil
-	case strings.HasPrefix(arg, "--context="):
-		opts.kubeContext = strings.TrimPrefix(arg, "--context=")
-		return 1, nil
-	case arg == "-v" || arg == "--verbose":
-		opts.verbose = true
-		return 1, nil
-	default:
-		return 0, nil
-	}
-}
-
 func validateInterval(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -350,7 +242,7 @@ func validateInterval(raw string) (string, error) {
 
 func buildWhileCommand(interval string, cmdArgs []string) []string {
 	// If the user passed a single shell command string containing whitespace or shell operators
-	// (e.g. kubectl net while my-pod --interval 5 "curl -s https://ifconfig.me/ && echo"),
+	// (e.g. kubectl net while -i 5 my-pod "curl -s https://ifconfig.me/ && echo"),
 	// execute it directly inside the shell loop.
 	if len(cmdArgs) == 1 && strings.ContainsAny(cmdArgs[0], " \t\n|&;<>()$`\"'") {
 		script := fmt.Sprintf("trap 'exit 130' INT TERM; while true; do %s; echo; sleep %s; done", cmdArgs[0], interval)
@@ -363,6 +255,6 @@ func buildWhileCommand(interval string, cmdArgs []string) []string {
 }
 
 func init() {
-	whileCmd.Flags().StringP("interval", "i", defaultWhileInterval, "Interval between command executions in seconds")
+	whileCmd.Flags().StringP("interval", "i", defaultWhileInterval, "Interval between command executions in seconds (place before POD_NAME)")
 	RootCmd.AddCommand(whileCmd)
 }
