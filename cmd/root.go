@@ -43,12 +43,13 @@ Subcommands:
   curl  - Execute curl HTTP/HTTPS requests from inside a target pod
   ping  - Execute ICMP ping tests from inside a target pod
   dig   - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
-  nc    - Execute netcat (nc) port connectivity tests or listen on a port
-  sh    - Attach an interactive debug shell (netshoot) to a pod's network namespace
-  while - Repeatedly execute a command at a fixed interval inside a target pod
-  mysql - Connect to a MySQL server from inside a target pod (default image: mysql:latest)
-  psql  - Connect to a PostgreSQL server from inside a target pod (default image: postgres:latest)
-  redis - Connect to a Redis server from inside a target pod (default image: redis:latest)`,
+  nc     - Execute netcat (nc) port connectivity tests or listen on a port
+  telnet - Execute telnet TCP connectivity and banner tests from inside a pod
+  sh     - Attach an interactive debug shell (netshoot) to a pod's network namespace
+  while  - Repeatedly execute a command at a fixed interval inside a target pod
+  mysql  - Connect to a MySQL server from inside a target pod (default image: mysql:latest)
+  psql   - Connect to a PostgreSQL server from inside a target pod (default image: postgres:latest)
+  redis  - Connect to a Redis server from inside a target pod (default image: redis:latest)`,
 	Example: `  # Live packet capture to Wireshark:
   kubectl net cap -n default my-pod -f "port 80"
 
@@ -66,6 +67,9 @@ Subcommands:
 
   # Listen on port inside pod to accept incoming test connections:
   kubectl net nc my-pod -l 8080
+
+  # Telnet TCP connectivity test from pod:
+  kubectl net telnet -n default my-pod backend-svc 8080
 
   # Interactive network troubleshooting shell:
   kubectl net sh -n default my-pod

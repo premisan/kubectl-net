@@ -4,7 +4,7 @@
 
 **`kubectl-net`** 은 Kubernetes 클러스터 내부의 네트워크 및 DB 접속 문제를 실시간으로 진단하고 분석할 수 있는 종합 CLI 툴킷(kubectl 플러그인)입니다.
 
-Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) Netcat 포트 접속/수신 테스트(`nc`)**, **6) 대화형 디버그 쉘(`sh`)**, **7) 특정 커맨드 주기적 반복 실행(`while`)**, **8) MySQL 접속/쿼리 테스트(`mysql`)**, **9) PostgreSQL 접속/쿼리 테스트(`psql`)**, **10) Redis 접속/명령 실행(`redis`)** 을 지원합니다.
+Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) Netcat 포트 접속/수신 테스트(`nc`)**, **6) Telnet TCP 접속/배너 테스트(`telnet`)**, **7) 대화형 디버그 쉘(`sh`)**, **8) 특정 커맨드 주기적 반복 실행(`while`)**, **9) MySQL 접속/쿼리 테스트(`mysql`)**, **10) PostgreSQL 접속/쿼리 테스트(`psql`)**, **11) Redis 접속/명령 실행(`redis`)** 을 지원합니다.
 
 ---
 
@@ -16,7 +16,7 @@ Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Conta
   * 원본 컨테이너에 파일 복사나 재시작 없이 파드의 네트워크 네임스페이스에 Ephemeral 디버그 컨테이너를 부착합니다.
   * DB 클라이언트 서브커맨드(`mysql`, `psql`, `redis`)는 공식 `latest` 이미지(`mysql:latest`, `postgres:latest`, `redis:latest`)를 **비특권(non-privileged)** 모드로 부착하며, 이미지가 일치하는 실행 중 컨테이너만 안전하게 재사용합니다.
 * **통일된 파라미터 위치 규칙 및 플래그 충돌 방지**:
-  * `kubectl-net` 자체 플래그는 항상 **`POD_NAME` 앞**에 지정하고, **`POD_NAME` 뒤**에는 무조건 해당 커맨드(`curl`, `mysql`, `psql`, `redis-cli`, `ping`, `dig`, `nc`, `cap`, `while` 실행 커맨드)의 옵션과 인자만 지정합니다. 이를 통해 `-h`, `-n`, `-c`, `-p`, `-v` 등의 플래그 충돌을 원천적으로 방지합니다.
+  * `kubectl-net` 자체 플래그는 항상 **`POD_NAME` 앞**에 지정하고, **`POD_NAME` 뒤**에는 무조건 해당 커맨드(`curl`, `telnet`, `mysql`, `psql`, `redis-cli`, `ping`, `dig`, `nc`, `cap`, `while` 실행 커맨드)의 옵션과 인자만 지정합니다. 이를 통해 `-h`, `-n`, `-c`, `-p`, `-v` 등의 플래그 충돌을 원천적으로 방지합니다.
 
 ---
 
@@ -93,7 +93,7 @@ kubectl net <서브커맨드> [kubectl-net 플래그...] <POD_NAME> [커맨드 �
 ```
 
 * **`<POD_NAME>` 앞**: `kubectl-net` 자체 플래그 (`-n/--namespace`, `-c/--container`, `--image`, `--kubeconfig`, `--context`, `-v/--verbose`, 그리고 `while`의 `-i/--interval`)
-* **`<POD_NAME>` 뒤**: 실행 대상 커맨드 전용 옵션과 인자 (`curl`, `while`, `mysql`, `psql`, `redis`의 경우 원형 그대로 패스스루)
+* **`<POD_NAME>` 뒤**: 실행 대상 커맨드 전용 옵션과 인자 (`curl`, `telnet`, `while`, `mysql`, `psql`, `redis`의 경우 원형 그대로 패스스루)
 
 ---
 
@@ -182,14 +182,28 @@ kubectl net nc my-pod -l 8080 -k
 kubectl net nc my-pod -l 5353 -u
 ```
 
-### 6. `kubectl net sh` (대화형 디버그 쉘)
+### 6. `kubectl net telnet` (Telnet TCP 접속 및 배너 테스트)
+특정 Pod 내부에서 `telnet`을 실행하여 대상 호스트/포트의 TCP 연결 가능 여부와 프로토콜 배너(HTTP, SMTP 등)를 대화형으로 점검합니다. 기본 디버그 이미지(`nicolaka/netshoot:latest`)에 `busybox-extras`로 포함되어 있어 별도 이미지 없이 바로 동작하며, `POD_NAME` 뒤의 모든 인자는 `telnet`으로 그대로 전달됩니다.
+
+```bash
+# 내부 서비스 포트 TCP 접속 테스트
+kubectl net telnet my-pod backend-service 8080
+
+# 특정 네임스페이스에서 IP 및 포트 접속 테스트
+kubectl net telnet -n production my-pod 10.244.1.25 3306
+
+# 서비스 배너 대화형 확인 (종료 시 Ctrl+] 입력 후 quit)
+kubectl net telnet -n default my-pod mail.internal 25
+```
+
+### 7. `kubectl net sh` (대화형 디버그 쉘)
 파드의 네트워크 네임스페이스를 공유하는 대화형 `netshoot` 쉘을 즉시 실행하여 터미널에서 자유롭게 네트워크 도구(`nmap`, `iperf3`, `netstat`, `traceroute` 등)를 실행합니다.
 
 ```bash
 kubectl net sh -n default my-pod
 ```
 
-### 7. `kubectl net while` (주기적 커맨드 반복 실행)
+### 8. `kubectl net while` (주기적 커맨드 반복 실행)
 디버그 컨테이너 내부에서 `while true; do <command>; echo; sleep <interval>; done` 루프를 실행하여 특정 커맨드를 일정 간격으로 무한 반복합니다. `--interval`(`-i`)의 기본값은 `1`(1초)이며, 다른 `kubectl-net` 플래그와 함께 **`POD_NAME` 앞에 지정**합니다. `POD_NAME` 뒤에 이어지는 모든 파라미터는 디버그 컨테이너로 그대로 전달됩니다.
 
 ```bash
@@ -204,7 +218,7 @@ kubectl net while -i 5 my-pod curl -v https://ifconfig.me/
 kubectl net while -n production -i 2 my-pod curl -s -I http://backend-service:8080/healthz
 ```
 
-### 8. `kubectl net mysql` (MySQL 접속 테스트 및 쿼리 실행)
+### 9. `kubectl net mysql` (MySQL 접속 테스트 및 쿼리 실행)
 타겟 Pod의 네트워크 네임스페이스에서 `mysql` 클라이언트로 MySQL/MariaDB 서버에 접속 테스트 및 쿼리를 수행합니다. 기본 디버그 이미지는 `mysql:latest`이며, `--image`로 오버라이드할 수 있습니다. 터미널 환경에서는 자동으로 TTY를 할당해 `-p` 비밀번호 프롬프트와 대화형 REPL을 안전하게 지원하며, 파이프/리다이렉션 시 자동으로 비대화형(non-TTY) 모드로 전환됩니다.
 
 ```bash
@@ -221,7 +235,7 @@ kubectl net mysql -n production my-pod -h mysql-svc -u admin -p -e "SELECT 1;"
 kubectl net mysql --image mariadb:latest -n production my-pod -h db.internal -u root -p
 ```
 
-### 9. `kubectl net psql` (PostgreSQL 접속 테스트 및 쿼리 실행)
+### 10. `kubectl net psql` (PostgreSQL 접속 테스트 및 쿼리 실행)
 타겟 Pod의 네트워크 네임스페이스에서 `psql` 클라이언트로 PostgreSQL 서버에 접속 테스트 및 쿼리를 수행합니다. 기본 디버그 이미지는 `postgres:latest`이며, `--image`로 오버라이드할 수 있습니다.
 
 ```bash
@@ -238,7 +252,7 @@ kubectl net psql -n production my-pod "postgresql://postgres@pg.internal:5432/my
 kubectl net psql --image postgres:alpine my-pod -h pg-svc -U postgres
 ```
 
-### 10. `kubectl net redis` (Redis 접속 테스트 및 명령 실행)
+### 11. `kubectl net redis` (Redis 접속 테스트 및 명령 실행)
 타겟 Pod의 네트워크 네임스페이스에서 `redis-cli`로 Redis 서버에 접속 테스트 및 명령을 수행합니다. 기본 디버그 이미지는 `redis:latest`이며, `--image`로 오버라이드할 수 있습니다.
 
 ```bash
