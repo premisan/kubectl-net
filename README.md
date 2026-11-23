@@ -12,6 +12,7 @@ Leveraging the standard Kubernetes **Ephemeral Debug Containers** mechanism, it 
 4. **DNS Resolution Diagnostics (`dig`)**
 5. **Netcat Port Connectivity & Listen Testing (`nc`)**
 6. **Interactive Network Debug Shell (`sh`)**
+7. **Repeated Loop Command Execution (`while`)**
 
 ---
 
@@ -180,6 +181,21 @@ Launch an interactive `netshoot` shell sharing the target pod's network namespac
 
 ```bash
 kubectl net sh my-pod -n default
+```
+
+### 7. `kubectl net while` (Repeated Loop Command Execution)
+Repeatedly execute any command at a fixed interval inside the target pod's debug container (`while true; do <command>; echo; sleep <interval>; done`). `--interval` (`-i`) defaults to `1` second and can be placed either before or after `POD_NAME` (as long as it appears before the command). All arguments following the command are passed directly to the debug container.
+
+```bash
+# Repeat curl every 1 second (default interval)
+kubectl net while my-pod curl -v https://ifconfig.me/
+
+# Repeat curl every 5 seconds (--interval or -i, before or after pod name)
+kubectl net while my-pod --interval 5 curl -v https://ifconfig.me/
+kubectl net while -i 5 my-pod curl -v https://ifconfig.me/
+
+# Target a specific namespace and repeat every 2 seconds
+kubectl net while my-pod -n production -i 2 curl -s -I http://backend-service:8080/healthz
 ```
 
 ---

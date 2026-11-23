@@ -4,7 +4,7 @@
 
 **`kubectl-net`** 은 Kubernetes 클러스터 내부의 네트워크 문제를 실시간으로 진단하고 분석할 수 있는 종합 CLI 툴킷(kubectl 플러그인)입니다.
 
-Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) Netcat 포트 접속/수신 테스트(`nc`)**, **6) 대화형 디버그 쉘(`sh`)** 을 지원합니다.
+Kubernetes 표준 **Ephemeral Debug Container** 방식을 사용하여 GKE(Container-Optimized OS)나 온프레미스 `containerd` 런타임 버전 및 Distroless/Scratch 이미지와 관계없이 **1) 실시간 패킷 캡처(`cap`)**, **2) 파드 간/외부 curl 호출 테스트(`curl`)**, **3) ICMP ping 테스트(`ping`)**, **4) DNS 질의(`dig`)**, **5) Netcat 포트 접속/수신 테스트(`nc`)**, **6) 대화형 디버그 쉘(`sh`)**, **7) 특정 커맨드 주기적 반복 실행(`while`)** 을 지원합니다.
 
 ---
 
@@ -173,6 +173,21 @@ kubectl net nc my-pod -l 5353 -u
 
 ```bash
 kubectl net sh my-pod -n default
+```
+
+### 7. `kubectl net while` (주기적 커맨드 반복 실행)
+디버그 컨테이너 내부에서 `while true; do <command>; echo; sleep <interval>; done` 루프를 실행하여 특정 커맨드를 일정 간격으로 무한 반복합니다. `--interval`(`-i`)의 기본값은 `1`(1초)이며, 커맨드 앞이라면 `POD_NAME` 앞뒤 어느 위치에나 지정할 수 있습니다. 커맨드 뒤에 이어지는 모든 파라미터는 디버그 컨테이너로 그대로 전달됩니다.
+
+```bash
+# 기본 간격(1초)으로 curl 반복 실행
+kubectl net while my-pod curl -v https://ifconfig.me/
+
+# 5초 간격으로 curl 반복 실행 (--interval 또는 -i, 파드 이름 앞/뒤 모두 가능)
+kubectl net while my-pod --interval 5 curl -v https://ifconfig.me/
+kubectl net while -i 5 my-pod curl -v https://ifconfig.me/
+
+# 특정 네임스페이스 지정 및 2초 간격 반복 실행
+kubectl net while my-pod -n production -i 2 curl -s -I http://backend-service:8080/healthz
 ```
 
 ---

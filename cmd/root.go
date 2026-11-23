@@ -37,7 +37,8 @@ Subcommands:
   ping  - Execute ICMP ping tests from inside a target pod
   dig   - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
   nc    - Execute netcat (nc) port connectivity tests or listen on a port
-  sh    - Attach an interactive debug shell (netshoot) to a pod's network namespace`,
+  sh    - Attach an interactive debug shell (netshoot) to a pod's network namespace
+  while - Repeatedly execute a command at a fixed interval inside a target pod`,
 	Example: `  # Live packet capture to Wireshark:
   kubectl net cap my-pod -n default -f "port 80"
 
@@ -57,7 +58,10 @@ Subcommands:
   kubectl net nc my-pod -l 8080
 
   # Interactive network troubleshooting shell:
-  kubectl net sh my-pod -n default`,
+  kubectl net sh my-pod -n default
+
+  # Repeat a command inside pod every 5 seconds:
+  kubectl net while my-pod --interval 5 curl -v https://ifconfig.me/`,
 	SilenceUsage: true,
 }
 
