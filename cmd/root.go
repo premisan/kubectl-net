@@ -36,21 +36,7 @@ Unified Argument Convention:
 
   Place all kubectl-net flags (-n/--namespace, -c/--container, --image, --context,
   --kubeconfig, -v/--verbose, and -i/--interval for while) BEFORE POD_NAME.
-  Everything AFTER POD_NAME belongs strictly to the target command.
-
-Subcommands:
-  cap     - Live packet capture into Wireshark, .pcap file, or stdout
-  curl    - Execute curl HTTP/HTTPS requests from inside a target pod
-  ping    - Execute ICMP ping tests from inside a target pod
-  dig     - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
-  nc      - Execute netcat (nc) port connectivity tests or listen on a port
-  telnet  - Execute telnet TCP connectivity and banner tests from inside a pod
-  netstat - Inspect sockets, listening ports, and routing tables inside a pod
-  sh      - Attach an interactive debug shell (netshoot) to a pod's network namespace
-  while   - Repeatedly execute a command at a fixed interval inside a target pod
-  mysql   - Connect to a MySQL server from inside a target pod (default image: mysql:latest)
-  psql    - Connect to a PostgreSQL server from inside a target pod (default image: postgres:latest)
-  redis   - Connect to a Redis server from inside a target pod (default image: redis:latest)`,
+  Everything AFTER POD_NAME belongs strictly to the target command.`,
 	Example: `  # Live packet capture to Wireshark:
   kubectl net cap -n default my-pod -f "port 80"
 
