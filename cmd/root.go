@@ -39,17 +39,18 @@ Unified Argument Convention:
   Everything AFTER POD_NAME belongs strictly to the target command.
 
 Subcommands:
-  cap   - Live packet capture into Wireshark, .pcap file, or stdout
-  curl  - Execute curl HTTP/HTTPS requests from inside a target pod
-  ping  - Execute ICMP ping tests from inside a target pod
-  dig   - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
-  nc     - Execute netcat (nc) port connectivity tests or listen on a port
-  telnet - Execute telnet TCP connectivity and banner tests from inside a pod
-  sh     - Attach an interactive debug shell (netshoot) to a pod's network namespace
-  while  - Repeatedly execute a command at a fixed interval inside a target pod
-  mysql  - Connect to a MySQL server from inside a target pod (default image: mysql:latest)
-  psql   - Connect to a PostgreSQL server from inside a target pod (default image: postgres:latest)
-  redis  - Connect to a Redis server from inside a target pod (default image: redis:latest)`,
+  cap     - Live packet capture into Wireshark, .pcap file, or stdout
+  curl    - Execute curl HTTP/HTTPS requests from inside a target pod
+  ping    - Execute ICMP ping tests from inside a target pod
+  dig     - Perform DNS resolution diagnostics (dig/nslookup) from inside a pod
+  nc      - Execute netcat (nc) port connectivity tests or listen on a port
+  telnet  - Execute telnet TCP connectivity and banner tests from inside a pod
+  netstat - Inspect sockets, listening ports, and routing tables inside a pod
+  sh      - Attach an interactive debug shell (netshoot) to a pod's network namespace
+  while   - Repeatedly execute a command at a fixed interval inside a target pod
+  mysql   - Connect to a MySQL server from inside a target pod (default image: mysql:latest)
+  psql    - Connect to a PostgreSQL server from inside a target pod (default image: postgres:latest)
+  redis   - Connect to a Redis server from inside a target pod (default image: redis:latest)`,
 	Example: `  # Live packet capture to Wireshark:
   kubectl net cap -n default my-pod -f "port 80"
 
@@ -70,6 +71,9 @@ Subcommands:
 
   # Telnet TCP connectivity test from pod:
   kubectl net telnet -n default my-pod backend-svc 8080
+
+  # Inspect listening ports and active connections inside pod:
+  kubectl net netstat -n default my-pod -tulnp
 
   # Interactive network troubleshooting shell:
   kubectl net sh -n default my-pod
